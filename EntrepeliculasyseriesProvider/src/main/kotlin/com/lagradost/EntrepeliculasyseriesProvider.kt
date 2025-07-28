@@ -147,14 +147,14 @@ class EntrepeliculasyseriesProvider : MainAPI() {
             doc.select("input").apmap {
                 val postkey = it.attr("value")
                 app.post(
-                    "https://entrepeliculasyseries.nu/r.php",
+                    "$mainUrl/r.php",
                     headers = mapOf(
-                        "Host" to "entrepeliculasyseries.nu",
+                        "Host" to "entrepeliculasyseries.nz",
                         "User-Agent" to USER_AGENT,
                         "Accept" to "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
                         "Accept-Language" to "en-US,en;q=0.5",
                         "Content-Type" to "application/x-www-form-urlencoded",
-                        "Origin" to "https://entrepeliculasyseries.nu",
+                        "Origin" to mainUrl,
                         "DNT" to "1",
                         "Connection" to "keep-alive",
                         "Referer" to servers,
