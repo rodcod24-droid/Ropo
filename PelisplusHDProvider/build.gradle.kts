@@ -1,6 +1,10 @@
+// PelisplusHDProvider/build.gradle.kts
 // use an integer for version numbers
 version = 1
 
+android {
+    namespace = "com.lagradost"
+}
 
 cloudstream {
     language = "es"
@@ -16,12 +20,11 @@ cloudstream {
      * 2: Slow
      * 3: Beta only
      * */
-    status = 0 // will be 3 if unspecified
+    status = 1 // will be 3 if unspecified
     tvTypes = listOf(
         "TvSeries",
         "Movie",
     )
 
-
-    iconUrl = "https://www.google.com/s2/favicons?domain=pelisplushd.net&sz=%size%"
+    iconUrl = "https://www.google.com/s2/favicons?domain=pelisplushd.mx&sz=%size%"
 }
