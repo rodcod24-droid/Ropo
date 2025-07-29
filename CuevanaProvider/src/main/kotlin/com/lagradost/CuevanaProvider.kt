@@ -287,4 +287,38 @@ class CuevanaProvider : MainAPI() {
                         }
                         if (loc.contains("index.php?h=")) {
                             val indexRegex =
-                                Regex("(\\/\\/api.cuevana3.me\\/sc\\/index.php\\?h=[a-zA-Z0
+                                Regex("(\\/\\/api.cuevana3.me\\/sc\\/index.php\\?h=[a-zA-Z0-9]{0,8}[a-zA-Z0-9_-]+)")
+                            indexRegex.findAll(loc).map { indreg ->
+                                indreg.value.replace("//api.cuevana3.me/sc/index.php?h=", "")
+                            }.toList().apmap { inlink ->
+                                app.post(
+                                    "https://api.cuevana3.me/sc/r.php", allowRedirects = false,
+                                    headers = mapOf(
+                                        "Host" to "api.cuevana3.me",
+                                        "User-Agent" to USER_AGENT,
+                                        "Accept" to "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
+                                        "Accept-Language" to "en-US,en;q=0.5",
+                                        "Accept-Encoding" to "gzip, deflate, br",
+                                        "Content-Type" to "application/x-www-form-urlencoded",
+                                        "Origin" to "null",
+                                        "DNT" to "1",
+                                        "Connection" to "keep-alive",
+                                        "Upgrade-Insecure-Requests" to "1",
+                                        "Sec-Fetch-Dest" to "iframe",
+                                        "Sec-Fetch-Mode" to "navigate",
+                                        "Sec-Fetch-Site" to "same-origin",
+                                        "Sec-Fetch-User" to "?1",
+                                    ),
+                                    data = mapOf(Pair("h", inlink))
+                                ).okhttpResponse.headers.values("location").apmap { link ->
+                                    loadExtractor(link, data, subtitleCallback, callback)
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        return true
+    }
+}
