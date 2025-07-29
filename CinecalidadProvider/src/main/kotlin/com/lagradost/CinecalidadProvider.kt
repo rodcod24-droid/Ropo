@@ -1,7 +1,6 @@
 package com.lagradost
 
 import com.lagradost.cloudstream3.*
-// import com.lagradost.cloudstream3.extractors.Cinestart
 import com.lagradost.cloudstream3.utils.ExtractorLink
 import com.lagradost.cloudstream3.utils.loadExtractor
 
@@ -81,7 +80,6 @@ class CinecalidadProvider : MainAPI() {
         }
     }
 
-
     override suspend fun load(url: String): LoadResponse? {
         val soup = app.get(url, timeout = 120).document
 
@@ -150,12 +148,8 @@ class CinecalidadProvider : MainAPI() {
 
         doc.select(".dooplay_player_option").apmap {
             val url = it.attr("data-option")
-//            if (url.startsWith("https://cinestart.net")) {
-//                val extractor = Cinestart()
-//                extractor.getSafeUrl(url, null, subtitleCallback, callback)
-//            } else {
-                loadExtractor(url, mainUrl, subtitleCallback, callback)
-//            }
+            loadExtractor(url, mainUrl, subtitleCallback, callback)
+            
             if (url.startsWith("https://cinecalidad.lol")) {
                 val cineurlregex =
                     Regex("(https:\\/\\/cinecalidad\\.lol\\/play\\/\\?h=[a-zA-Z0-9]{0,8}[a-zA-Z0-9_-]+)")
@@ -187,15 +181,11 @@ class CinecalidadProvider : MainAPI() {
                 }
             }
         }
+        
         if (datatext.contains("en castellano")) app.get("$data?ref=es").document.select(".dooplay_player_option")
             .apmap {
                 val url = it.attr("data-option")
-//                if (url.startsWith("https://cinestart.net")) {
-//                    val extractor = Cinestart()
-//                    extractor.getSafeUrl(url, null, subtitleCallback, callback)
-//                } else {
-                    loadExtractor(url, mainUrl, subtitleCallback, callback)
-//                }
+                loadExtractor(url, mainUrl, subtitleCallback, callback)
 
                 if (url.startsWith("https://cinecalidad.lol")) {
                     val cineurlregex =
@@ -228,6 +218,7 @@ class CinecalidadProvider : MainAPI() {
                     }
                 }
             }
+            
         if (datatext.contains("Subtítulo LAT") || datatext.contains("Forzados LAT")) {
             doc.select("#panel_descarga.pane a").apmap {
                 val link =
