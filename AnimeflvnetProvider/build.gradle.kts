@@ -6,8 +6,8 @@ cloudstream {
     language = "es"
     // All of these properties are optional, you can safely remove them
 
-    // description = "Lorem Ipsum"
-    // authors = listOf("Cloudburst")
+     description = "Funciona pe"
+     authors = listOf("Cloudburst")
 
     /**
      * Status int as the following:
@@ -24,4 +24,5 @@ cloudstream {
     )
 
     iconUrl = "https://www.google.com/s2/favicons?domain=www3.animeflv.net&sz=%size%"
+    isCrossPlatform = true
 }
