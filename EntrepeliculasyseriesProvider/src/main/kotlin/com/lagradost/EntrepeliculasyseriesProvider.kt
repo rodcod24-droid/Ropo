@@ -80,7 +80,6 @@ class EntrepeliculasyseriesProvider : MainAPI() {
         }.toList()
     }
 
-
     override suspend fun load(url: String): LoadResponse? {
         val soup = app.get(url, timeout = 120).document
 
@@ -91,87 +90,4 @@ class EntrepeliculasyseriesProvider : MainAPI() {
             val href = (li.select("a") ?: li.select(".C a") ?: li.select("article a")).attr("href")
             val epThumb = li.selectFirst("div.Image img")!!.attr("data-src")
             val seasonid = li.selectFirst("span.Year")!!.text().let { str ->
-                str.split("x").mapNotNull { subStr -> subStr.toIntOrNull() }
-            }
-            val isValid = seasonid.size == 2
-            val episode = if (isValid) seasonid.getOrNull(1) else null
-            val season = if (isValid) seasonid.getOrNull(0) else null
-            Episode(
-                href,
-                null,
-                season,
-                episode,
-                fixUrl(epThumb)
-            )
-        }
-        return when (val tvType =
-            if (url.contains("/pelicula/")) TvType.Movie else TvType.TvSeries) {
-            TvType.TvSeries -> {
-                TvSeriesLoadResponse(
-                    title,
-                    url,
-                    this.name,
-                    tvType,
-                    episodes,
-                    poster,
-                    null,
-                    description,
-                )
-            }
-            TvType.Movie -> {
-                MovieLoadResponse(
-                    title,
-                    url,
-                    this.name,
-                    tvType,
-                    url,
-                    poster,
-                    null,
-                    description,
-                )
-            }
-            else -> null
-        }
-    }
-
-
-    override suspend fun loadLinks(
-        data: String,
-        isCasting: Boolean,
-        subtitleCallback: (SubtitleFile) -> Unit,
-        callback: (ExtractorLink) -> Unit
-    ): Boolean {
-        app.get(data).document.select(".video ul.dropdown-menu li").apmap {
-            val servers = it.attr("data-link")
-            val doc = app.get(servers).document
-            doc.select("input").apmap {
-                val postkey = it.attr("value")
-                app.post(
-                    "$mainUrl/r.php",
-                    headers = mapOf(
-                        "Host" to "entrepeliculasyseries.nz",
-                        "User-Agent" to USER_AGENT,
-                        "Accept" to "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
-                        "Accept-Language" to "en-US,en;q=0.5",
-                        "Content-Type" to "application/x-www-form-urlencoded",
-                        "Origin" to mainUrl,
-                        "DNT" to "1",
-                        "Connection" to "keep-alive",
-                        "Referer" to servers,
-                        "Upgrade-Insecure-Requests" to "1",
-                        "Sec-Fetch-Dest" to "document",
-                        "Sec-Fetch-Mode" to "navigate",
-                        "Sec-Fetch-Site" to "same-origin",
-                        "Sec-Fetch-User" to "?1",
-                    ),
-                    //params = mapOf(Pair("h", postkey)),
-                    data = mapOf(Pair("h", postkey)),
-                    allowRedirects = false
-                ).okhttpResponse.headers.values("location").apmap {
-                    loadExtractor(it, data, subtitleCallback, callback)
-                }
-            }
-        }
-        return true
-    }
-}
+                str.split("x").mapNot
