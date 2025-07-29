@@ -1,5 +1,3 @@
-
-// Fixed CuevanaProvider.kt
 package com.lagradost
 
 import com.fasterxml.jackson.annotation.JsonProperty
