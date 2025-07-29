@@ -1,6 +1,10 @@
+/ FreeTVProvider/build.gradle.kts
 // use an integer for version numbers
 version = 1
 
+android {
+    namespace = "com.lagradost"
+}
 
 cloudstream {
     // All of these properties are optional, you can safely remove them
