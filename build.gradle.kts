@@ -11,13 +11,13 @@ buildscript {
     }
 
     dependencies {
-        classpath("com.android.tools.build:gradle:8.7.3")
+        classpath("com.android.tools.build:gradle:8.5.2")
         // Cloudstream gradle plugin which makes everything work and builds plugins
         classpath("com.github.recloudstream:gradle:-SNAPSHOT")
-        classpath("org.jetbrains.kotlin:kotlin-gradle-plugin:2.1.0")
+        classpath("org.jetbrains.kotlin:kotlin-gradle-plugin:1.9.22")
     }
 }
-// HEEEEEEELPPPPPPPPP
+
 allprojects {
     repositories {
         google()
@@ -51,15 +51,15 @@ subprojects {
         }
 
         compileOptions {
-            sourceCompatibility = JavaVersion.VERSION_11
-            targetCompatibility = JavaVersion.VERSION_11
+            sourceCompatibility = JavaVersion.VERSION_1_8
+            targetCompatibility = JavaVersion.VERSION_1_8
         }
 
         tasks.withType<org.jetbrains.kotlin.gradle.tasks.KotlinCompile> {
-            compilerOptions {
-                jvmTarget.set(JvmTarget.JVM_11)
+            kotlinOptions {
+                jvmTarget = "1.8"
                 // Disables some unnecessary features
-                freeCompilerArgs.addAll(
+                freeCompilerArgs = listOf(
                     "-Xno-call-assertions",
                     "-Xno-param-assertions", 
                     "-Xno-receiver-assertions"
