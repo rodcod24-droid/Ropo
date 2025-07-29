@@ -155,32 +155,22 @@ class CuevanaProvider : MainAPI() {
 
         return when (tvType) {
             TvType.TvSeries -> {
-                TvSeriesLoadResponse(
-                    title,
-                    url,
-                    this.name,
-                    tvType,
-                    episodes,
-                    poster,
-                    year,
-                    description,
-                    tags = tags,
-                    recommendations = recommendations
-                )
+                newTvSeriesLoadResponse(title, url, TvType.TvSeries, episodes) {
+                    this.posterUrl = poster
+                    this.year = year
+                    this.plot = description
+                    this.tags = tags
+                    this.recommendations = recommendations
+                }
             }
             TvType.Movie -> {
-                MovieLoadResponse(
-                    title,
-                    url,
-                    this.name,
-                    tvType,
-                    url,
-                    poster,
-                    year,
-                    description,
-                    tags = tags,
-                    recommendations = recommendations
-                )
+                newMovieLoadResponse(title, url, TvType.Movie, url) {
+                    this.posterUrl = poster
+                    this.year = year
+                    this.plot = description
+                    this.tags = tags
+                    this.recommendations = recommendations
+                }
             }
             else -> null
         }
