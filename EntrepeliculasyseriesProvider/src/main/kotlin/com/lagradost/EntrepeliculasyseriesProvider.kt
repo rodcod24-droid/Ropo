@@ -90,4 +90,60 @@ class EntrepeliculasyseriesProvider : MainAPI() {
             val href = (li.select("a") ?: li.select(".C a") ?: li.select("article a")).attr("href")
             val epThumb = li.selectFirst("div.Image img")!!.attr("data-src")
             val seasonid = li.selectFirst("span.Year")!!.text().let { str ->
-                str.split("x").mapNot
+                str.split("x").mapNotNull { subStr -> subStr.toIntOrNull() }
+            }
+            val isValid = seasonid.size == 2
+            val episode = if (isValid) seasonid.getOrNull(1) else null
+            val season = if (isValid) seasonid.getOrNull(0) else null
+            Episode(
+                href,
+                null,
+                season,
+                episode,
+                if (epThumb.contains("svg")) null else epThumb
+            )
+        }
+        return when (val tvType =
+            if (url.contains("/pelicula/")) TvType.Movie else TvType.TvSeries) {
+            TvType.TvSeries -> {
+                TvSeriesLoadResponse(
+                    title,
+                    url,
+                    this.name,
+                    tvType,
+                    episodes,
+                    poster,
+                    null,
+                    description,
+                )
+            }
+            TvType.Movie -> {
+                MovieLoadResponse(
+                    title,
+                    url,
+                    this.name,
+                    tvType,
+                    url,
+                    poster,
+                    null,
+                    description,
+                )
+            }
+            else -> null
+        }
+    }
+
+    override suspend fun loadLinks(
+        data: String,
+        isCasting: Boolean,
+        subtitleCallback: (SubtitleFile) -> Unit,
+        callback: (ExtractorLink) -> Unit
+    ): Boolean {
+        val doc = app.get(data).document
+        doc.select("div.TPlayer.embed_div iframe").apmap {
+            val iframe = fixUrl(it.attr("data-src"))
+            loadExtractor(iframe, data, subtitleCallback, callback)
+        }
+        return true
+    }
+}
