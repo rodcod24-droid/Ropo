@@ -49,18 +49,21 @@ class FreeTVProvider : MainAPI() {
     override suspend fun search(query: String): List<SearchResponse> {
         val data = IptvPlaylistParser().parseM3U(app.get(mainUrl).text)
 
-        return data.items.filter { it.attributes["tvg-id"]?.contains(query) ?: false }.map { channel ->
-                val streamurl = channel.url.toString()
-                val channelname = channel.attributes["tvg-id"].toString()
-                val posterurl = channel.attributes["tvg-logo"].toString()
-                val nation = channel.attributes["group-title"].toString()
-                LiveSearchResponse(
-                    channelname,
-                    LoadData(streamurl, channelname, posterurl, nation).toJson(),
-                    this@FreeTVProvider.name,
-                    TvType.Live,
-                    posterurl,
-                )
+        return data.items.filter { 
+            it.attributes["tvg-id"]?.contains(query, ignoreCase = true) == true ||
+            it.title?.contains(query, ignoreCase = true) == true 
+        }.map { channel ->
+            val streamurl = channel.url.toString()
+            val channelname = channel.title.toString()
+            val posterurl = channel.attributes["tvg-logo"].toString()
+            val nation = channel.attributes["group-title"].toString()
+            LiveSearchResponse(
+                channelname,
+                LoadData(streamurl, channelname, posterurl, nation).toJson(),
+                this@FreeTVProvider.name,
+                TvType.Live,
+                posterurl,
+            )
         }
     }
 
@@ -75,13 +78,14 @@ class FreeTVProvider : MainAPI() {
             plot = data.nation
         )
     }
+    
     data class LoadData(
         val url: String,
         val title: String,
         val poster: String,
         val nation: String
-
     )
+    
     override suspend fun loadLinks(
         data: String,
         isCasting: Boolean,
@@ -103,7 +107,6 @@ class FreeTVProvider : MainAPI() {
     }
 }
 
-
 data class Playlist(
     val items: List<PlaylistItem> = emptyList(),
 )
@@ -116,9 +119,7 @@ data class PlaylistItem(
     val userAgent: String? = null,
 )
 
-
 class IptvPlaylistParser {
-
 
     /**
      * Parse M3U8 string into [Playlist]
@@ -326,7 +327,6 @@ class IptvPlaylistParser {
         const val EXT_INF = "#EXTINF"
         const val EXT_VLC_OPT = "#EXTVLCOPT"
     }
-
 }
 
 /**
@@ -339,5 +339,4 @@ sealed class PlaylistParserException(message: String) : Exception(message) {
      */
     class InvalidHeader :
         PlaylistParserException("Invalid file header. Header doesn't start with #EXTM3U")
-
 }
