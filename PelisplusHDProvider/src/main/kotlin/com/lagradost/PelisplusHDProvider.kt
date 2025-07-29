@@ -1,3 +1,4 @@
+// Fixed PelisplusHDProvider.kt
 package com.lagradost
 
 import com.lagradost.cloudstream3.*
@@ -56,7 +57,7 @@ class PelisplusHDProvider : MainAPI() {
                 title,
                 href,
                 name,
-                TvType.Movie,
+                TvType.TvSeries,
                 posterUrl,
                 null,
                 null
