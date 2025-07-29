@@ -29,7 +29,6 @@ jobs:
           ref: "builds"
           path: "builds"
           # Don't fail if builds branch doesn't exist
-          continue-on-error: true
       
       - name: Create builds branch if it doesn't exist
         run: |
