@@ -32,7 +32,8 @@ val disabled = listOf<String>(
     "TocanimeProvider", 
     "UakinoProvider", 
     "UseeTv", 
-    "YomoviesProvider"
+    "YomoviesProvider",
+    "AnimeflvnetProvider"
 )
 
 File(rootDir, ".").eachDir { dir ->
