@@ -1,6 +1,11 @@
+
+// CuevanaProvider/build.gradle.kts
 // use an integer for version numbers
 version = 1
 
+android {
+    namespace = "com.lagradost"
+}
 
 cloudstream {
     language = "es"
