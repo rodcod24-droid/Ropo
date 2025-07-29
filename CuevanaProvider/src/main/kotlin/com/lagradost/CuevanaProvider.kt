@@ -1,3 +1,5 @@
+
+// Fixed CuevanaProvider.kt
 package com.lagradost
 
 import com.fasterxml.jackson.annotation.JsonProperty
@@ -37,7 +39,7 @@ class CuevanaProvider : MainAPI() {
                             title,
                             url,
                             this.name,
-                            TvType.Anime,
+                            TvType.TvSeries,
                             poster,
                             null,
                             null,
@@ -118,7 +120,7 @@ class CuevanaProvider : MainAPI() {
             val href = li.select("a").attr("href")
             val epThumb =
                 li.selectFirst("div.Image img")?.attr("data-src") ?: li.selectFirst("img.lazy")!!
-                    .attr("data-srcc")
+                    .attr("data-src")
             val seasonid = li.selectFirst("span.Year")!!.text().let { str ->
                 str.split("x").mapNotNull { subStr -> subStr.toIntOrNull() }
             }
