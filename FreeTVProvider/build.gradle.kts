@@ -1,4 +1,4 @@
-/ FreeTVProvider/build.gradle.kts
+// FreeTVProvider/build.gradle.kts
 // use an integer for version numbers
 version = 1
 
