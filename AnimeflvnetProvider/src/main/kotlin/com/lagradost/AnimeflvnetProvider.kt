@@ -158,6 +158,30 @@ class AnimeflvnetProvider : MainAPI() {
         }
     }
 
+    private fun extractVideoUrls(text: String): List<String> {
+        val urls = mutableListOf<String>()
+        
+        // Extract various video URL patterns
+        val patterns = listOf(
+            Regex("\"(https?://[^\"]*\\.(mp4|m3u8|mkv)[^\"]*)\"|'(https?://[^']*\\.(mp4|m3u8|mkv)[^']*)'"),
+            Regex("file:\\s*[\"'](https?://[^\"']+)[\"']"),
+            Regex("src:\\s*[\"'](https?://[^\"']+)[\"']"),
+            Regex("url:\\s*[\"'](https?://[^\"']+)[\"']"),
+            Regex("(https?://(?:www\\.)?(?:fembed|embedsb|streamtape|doodstream|uqload|mixdrop|upstream|voe)\\.(?:com|net|org|io|to|me)/[^\\s\"'<>]+)")
+        )
+        
+        patterns.forEach { pattern ->
+            pattern.findAll(text).forEach { match ->
+                val url = match.groupValues.find { it.startsWith("http") }
+                if (url != null && !urls.contains(url)) {
+                    urls.add(url)
+                }
+            }
+        }
+        
+        return urls
+    }
+
     override suspend fun loadLinks(
         data: String,
         isCasting: Boolean,
@@ -169,7 +193,7 @@ class AnimeflvnetProvider : MainAPI() {
                     .contains("var anime_id =") || script.data().contains("server")
             ) {
                 val videos = script.data().replace("\\/", "/")
-                fetchUrls(videos).map {
+                extractVideoUrls(videos).map {
                     it.replace("https://embedsb.com/e/", "https://watchsb.com/e/")
                         .replace("https://ok.ru", "http://ok.ru")
                 }.apmap {
