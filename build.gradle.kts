@@ -2,7 +2,6 @@ import com.lagradost.cloudstream3.gradle.CloudstreamExtension
 import com.android.build.gradle.BaseExtension
 import org.jetbrains.kotlin.gradle.dsl.JvmTarget
 
-
 buildscript {
     repositories {
         google()
@@ -40,25 +39,25 @@ subprojects {
 
     cloudstream {
         // when running through github workflow, GITHUB_REPOSITORY should contain current repository name
-        setRepo(System.getenv("GITHUB_REPOSITORY") ?: "rodcod24-droid/Ropo")
+        setRepo(System.getenv("GITHUB_REPOSITORY") ?: "user/repo")
     }
 
     android {
-        compileSdkVersion(30)
+        compileSdkVersion(34)
 
         defaultConfig {
             minSdk = 21
-            targetSdk = 30
+            targetSdk = 34
         }
 
         compileOptions {
-            sourceCompatibility = JavaVersion.VERSION_1_8
-            targetCompatibility = JavaVersion.VERSION_1_8
+            sourceCompatibility = JavaVersion.VERSION_11
+            targetCompatibility = JavaVersion.VERSION_11
         }
 
         tasks.withType<org.jetbrains.kotlin.gradle.tasks.KotlinCompile> {
             kotlinOptions {
-                jvmTarget = "1.8" // Required
+                jvmTarget = "11" // Updated to match compileOptions
                 // Disables some unnecessary features
                 freeCompilerArgs = freeCompilerArgs +
                         "-Xno-call-assertions" +
@@ -79,18 +78,18 @@ subprojects {
         // but you dont need to include any of them if you dont need them
         // https://github.com/recloudstream/cloudstream/blob/master/app/build.gradle
         implementation(kotlin("stdlib")) // adds standard kotlin features, like listOf, mapOf etc
-        implementation("com.github.Blatzar:NiceHttp:0.3.2") // http library
-        implementation("com.fasterxml.jackson.module:jackson-module-kotlin:2.13.1")
-        implementation("org.jsoup:jsoup:1.13.1") // html parser
-        implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.6.4") // html parser
+        implementation("com.github.Blatzar:NiceHttp:0.4.11") // updated http library version
+        implementation("com.fasterxml.jackson.module:jackson-module-kotlin:2.15.2") // updated version
+        implementation("org.jsoup:jsoup:1.16.1") // updated html parser version
+        implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.7.3") // updated coroutines version
 
         //run JS
         implementation("org.mozilla:rhino:1.7.14")
-		    // Library/extensions searching with Levenshtein distance
-        implementation ("me.xdrop:fuzzywuzzy:1.4.0")
+        // Library/extensions searching with Levenshtein distance
+        implementation("me.xdrop:fuzzywuzzy:1.4.0")
     }
 }
 
-task<Delete>("clean") {
+tasks.register<Delete>("clean") {
     delete(rootProject.buildDir)
 }
