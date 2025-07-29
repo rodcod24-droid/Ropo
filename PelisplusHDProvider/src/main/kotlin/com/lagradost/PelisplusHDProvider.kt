@@ -1,4 +1,3 @@
-// Fixed PelisplusHDProvider.kt
 package com.lagradost
 
 import com.lagradost.cloudstream3.*
@@ -161,6 +160,31 @@ class PelisplusHDProvider : MainAPI() {
         }
     }
 
+    private fun extractVideoUrls(text: String): List<String> {
+        val urls = mutableListOf<String>()
+        
+        // Extract various video URL patterns including fembed URLs
+        val patterns = listOf(
+            Regex("\"(https?://[^\"]*\\.(mp4|m3u8|mkv)[^\"]*)\"|'(https?://[^']*\\.(mp4|m3u8|mkv)[^']*)'"),
+            Regex("file:\\s*[\"'](https?://[^\"']+)[\"']"),
+            Regex("src:\\s*[\"'](https?://[^\"']+)[\"']"),
+            Regex("url:\\s*[\"'](https?://[^\"']+)[\"']"),
+            Regex("(https?://(?:www\\.)?(?:fembed|embedsb|streamtape|doodstream|uqload|mixdrop|upstream|voe)\\.(?:com|net|org|io|to|me)/[^\\s\"'<>]+)"),
+            Regex("\"($mainUrl/fembed\\.php\\?url=[^\"]+)\"")
+        )
+        
+        patterns.forEach { pattern ->
+            pattern.findAll(text).forEach { match ->
+                val url = match.groupValues.find { it.startsWith("http") }
+                if (url != null && !urls.contains(url)) {
+                    urls.add(url)
+                }
+            }
+        }
+        
+        return urls
+    }
+
     override suspend fun loadLinks(
         data: String,
         isCasting: Boolean,
@@ -168,9 +192,15 @@ class PelisplusHDProvider : MainAPI() {
         callback: (ExtractorLink) -> Unit
     ): Boolean {
         app.get(data).document.select("div.player > script").map { script ->
-            fetchUrls(
-                script.data().replace("$mainUrl/fembed.php?url=", "https://www.fembed.com/v/")
-            ).apmap {
+            val scriptData = script.data()
+            extractVideoUrls(scriptData).map { url ->
+                // Convert fembed.php URLs to direct fembed URLs
+                if (url.contains("$mainUrl/fembed.php?url=")) {
+                    url.replace("$mainUrl/fembed.php?url=", "https://www.fembed.com/v/")
+                } else {
+                    url
+                }
+            }.apmap {
                 loadExtractor(it, data, subtitleCallback, callback)
             }
         }
