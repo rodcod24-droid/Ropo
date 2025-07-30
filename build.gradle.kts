@@ -11,7 +11,7 @@ buildscript {
     }
 
     dependencies {
-        classpath("com.android.tools.build:gradle:8.5.2")
+        classpath("com.android.tools.build:gradle:8.7.3")
         // Cloudstream gradle plugin which makes everything work and builds plugins
         classpath("com.github.recloudstream:gradle:-SNAPSHOT")
         classpath("org.jetbrains.kotlin:kotlin-gradle-plugin:2.1.0")
@@ -47,7 +47,8 @@ subprojects {
 
         defaultConfig {
             minSdk = 21
-            targetSdk = 34
+            compileSdkVersion(35)
+            targetSdk = 35
         }
 
         compileOptions {
@@ -79,10 +80,10 @@ subprojects {
         // but you dont need to include any of them if you dont need them
         // https://github.com/recloudstream/cloudstream/blob/master/app/build.gradle
         implementation(kotlin("stdlib")) // adds standard kotlin features, like listOf, mapOf etc
-        implementation("com.github.Blatzar:NiceHttp:0.4.13") // updated http library version
-        implementation("com.fasterxml.jackson.module:jackson-module-kotlin:2.15.2") // updated version
-        implementation("org.jsoup:jsoup:1.16.1") // updated html parser version
-        implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.7.3") // updated coroutines version
+        implementation("com.github.Blatzar:NiceHttp:0.4.11") // updated http library version
+        implementation("com.fasterxml.jackson.module:jackson-module-kotlin:2.16.0") // updated version
+        implementation("org.jsoup:jsoup:1.18.3") // updated html parser version
+        implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.7.1") // updated coroutines version
 
         //run JSw
         implementation("org.mozilla:rhino:1.7.14")
