@@ -106,28 +106,16 @@ class EntrepeliculasyseriesProvider : MainAPI() {
         return when (val tvType =
             if (url.contains("/pelicula/")) TvType.Movie else TvType.TvSeries) {
             TvType.TvSeries -> {
-                TvSeriesLoadResponse(
-                    title,
-                    url,
-                    this.name,
-                    tvType,
-                    episodes,
-                    poster,
-                    null,
-                    description,
-                )
+                newTvSeriesLoadResponse(title, url, TvType.TvSeries, episodes) {
+                    this.posterUrl = poster
+                    this.plot = description
+                }
             }
             TvType.Movie -> {
-                MovieLoadResponse(
-                    title,
-                    url,
-                    this.name,
-                    tvType,
-                    url,
-                    poster,
-                    null,
-                    description,
-                )
+                newMovieLoadResponse(title, url, TvType.Movie, url) {
+                    this.posterUrl = poster
+                    this.plot = description
+                }
             }
             else -> null
         }
