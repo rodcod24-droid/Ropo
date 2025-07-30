@@ -79,12 +79,12 @@ subprojects {
         // but you dont need to include any of them if you dont need them
         // https://github.com/recloudstream/cloudstream/blob/master/app/build.gradle
         implementation(kotlin("stdlib")) // adds standard kotlin features, like listOf, mapOf etc
-        implementation("com.github.Blatzar:NiceHttp:0.4.11") // updated http library version
+        implementation("com.github.Blatzar:NiceHttp:0.4.13") // updated http library version
         implementation("com.fasterxml.jackson.module:jackson-module-kotlin:2.15.2") // updated version
         implementation("org.jsoup:jsoup:1.16.1") // updated html parser version
         implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.7.3") // updated coroutines version
 
-        //run JS
+        //run JSw
         implementation("org.mozilla:rhino:1.7.14")
         // Library/extensions searching with Levenshtein distance
         implementation("me.xdrop:fuzzywuzzy:1.4.0")
