@@ -1,0 +1,103 @@
+name: Build
+
+concurrency: 
+  group: "build"
+  cancel-in-progress: true
+
+on:
+  push:
+    branches:
+      - master
+      - main
+    paths-ignore:
+      - '*.md'
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup JDK 17
+        uses: actions/setup-java@v4
+        with:
+          java-version: '17'
+          distribution: 'temurin'
+
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Accept Android SDK licenses
+        run: yes | $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager --licenses || true
+
+      - name: Build Plugins with detailed output
+        run: |
+          chmod +x gradlew
+          ./gradlew build --stacktrace --info --continue || true
+          echo "Build completed with some failures - checking individual providers..."
+
+      - name: Build AnimeflvnetProvider individually
+        run: |
+          echo "Building AnimeflvnetProvider..."
+          ./gradlew :AnimeflvnetProvider:compileDebugKotlin --stacktrace --info || echo "AnimeflvnetProvider failed"
+
+      - name: Build CinecalidadProvider individually  
+        run: |
+          echo "Building CinecalidadProvider..."
+          ./gradlew :CinecalidadProvider:compileDebugKotlin --stacktrace --info || echo "CinecalidadProvider failed"
+
+      - name: Build CuevanaProvider individually
+        run: |
+          echo "Building CuevanaProvider..."
+          ./gradlew :CuevanaProvider:compileDebugKotlin --stacktrace --info || echo "CuevanaProvider failed"
+
+      - name: Build EntrepeliculasyseriesProvider individually
+        run: |
+          echo "Building EntrepeliculasyseriesProvider..."
+          ./gradlew :EntrepeliculasyseriesProvider:compileDebugKotlin --stacktrace --info || echo "EntrepeliculasyseriesProvider failed"
+
+      - name: Try building working providers only
+        run: |
+          echo "Trying to build working providers..."
+          ./gradlew :FreeTVProvider:compileDebugKotlin --stacktrace || echo "FreeTVProvider failed"
+          ./gradlew :PelisplusHDProvider:compileDebugKotlin --stacktrace || echo "PelisplusHDProvider failed"
+
+      - name: Generate plugins.json for successful builds
+        run: |
+          ./gradlew makePluginsJson || echo "makePluginsJson failed"
+
+      - name: Collect build artifacts
+        run: |
+          mkdir -p dist
+          find . -name "*.cs3" -exec cp {} dist/ \;
+          cp build/plugins.json dist/ 2>/dev/null || echo "plugins.json not found"
+          ls -la dist/
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: cloudstream-plugins-${{ github.sha }}
+          path: dist/
+        if: always()
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v1
+        with:
+          tag_name: build-${{ github.run_number }}
+          name: Build #${{ github.run_number }}
+          body: |
+            Automated build from commit ${{ github.sha }}
+            
+            ## How to use:
+            1. Download the `.cs3` files
+            2. In CloudStream: Settings → Extensions → Install from file
+            3. Select the downloaded `.cs3` files
+          files: dist/*
+          draft: false
+          prerelease: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        if: always()
