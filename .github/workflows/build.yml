@@ -33,41 +33,10 @@ jobs:
       - name: Accept Android SDK licenses
         run: yes | $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager --licenses || true
 
-      - name: Build Plugins with detailed output
+      - name: Build Plugins
         run: |
           chmod +x gradlew
-          ./gradlew build --stacktrace --info --continue || true
-          echo "Build completed with some failures - checking individual providers..."
-
-      - name: Build AnimeflvnetProvider individually
-        run: |
-          echo "Building AnimeflvnetProvider..."
-          ./gradlew :AnimeflvnetProvider:compileDebugKotlin --stacktrace --info || echo "AnimeflvnetProvider failed"
-
-      - name: Build CinecalidadProvider individually  
-        run: |
-          echo "Building CinecalidadProvider..."
-          ./gradlew :CinecalidadProvider:compileDebugKotlin --stacktrace --info || echo "CinecalidadProvider failed"
-
-      - name: Build CuevanaProvider individually
-        run: |
-          echo "Building CuevanaProvider..."
-          ./gradlew :CuevanaProvider:compileDebugKotlin --stacktrace --info || echo "CuevanaProvider failed"
-
-      - name: Build EntrepeliculasyseriesProvider individually
-        run: |
-          echo "Building EntrepeliculasyseriesProvider..."
-          ./gradlew :EntrepeliculasyseriesProvider:compileDebugKotlin --stacktrace --info || echo "EntrepeliculasyseriesProvider failed"
-
-      - name: Try building working providers only
-        run: |
-          echo "Trying to build working providers..."
-          ./gradlew :FreeTVProvider:compileDebugKotlin --stacktrace || echo "FreeTVProvider failed"
-          ./gradlew :PelisplusHDProvider:compileDebugKotlin --stacktrace || echo "PelisplusHDProvider failed"
-
-      - name: Generate plugins.json for successful builds
-        run: |
-          ./gradlew makePluginsJson || echo "makePluginsJson failed"
+          ./gradlew make makePluginsJson
 
       - name: Collect build artifacts
         run: |
@@ -81,7 +50,6 @@ jobs:
         with:
           name: cloudstream-plugins-${{ github.sha }}
           path: dist/
-        if: always()
 
       - name: Create Release
         uses: softprops/action-gh-release@v1
@@ -100,4 +68,3 @@ jobs:
           prerelease: false
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        if: always()
