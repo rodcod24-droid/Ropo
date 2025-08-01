@@ -256,4 +256,18 @@ class CinecalidadProvider : MainAPI() {
                             val subtitleDownloadLinks = subtitlePage.select("a.link")
                             subtitleDownloadLinks.forEach { downloadLink ->
                                 val sublink = if (data.contains("serie") || data.contains("episodio")) {
-                                    "$data${downloadLink.attr
+                                    "$data${downloadLink.attr("href")}"
+                                } else {
+                                    downloadLink.attr("href")
+                                }
+                                subtitleCallback(SubtitleFile(reallang, sublink))
+                            }
+                        }
+                    }
+                } catch (e: Exception) {
+                    // Subtitle processing failed, continue
+                }
+            }
+        }.awaitAll()
+    }
+}
