@@ -38,15 +38,9 @@ class CuevanaProvider : MainAPI() {
                 val poster = element.selectFirst("img.lazy")?.attr("data-src") ?: return@mapNotNull null
                 val url = element.selectFirst("a")?.attr("href") ?: return@mapNotNull null
                 
-                TvSeriesSearchResponse(
-                    title,
-                    url,
-                    this.name,
-                    TvType.TvSeries,
-                    poster,
-                    null,
-                    null,
-                )
+                newTvSeriesSearchResponse(title, url) {
+                    this.posterUrl = poster
+                }
             }
             items.add(HomePageList("Series", seriesList))
         } catch (e: Exception) {
@@ -62,15 +56,15 @@ class CuevanaProvider : MainAPI() {
                     val link = element.selectFirst("a")?.attr("href") ?: return@mapNotNull null
                     val posterImg = element.selectFirst("img.lazy")?.attr("data-src") ?: return@mapNotNull null
                     
-                    TvSeriesSearchResponse(
-                        title,
-                        link,
-                        this.name,
-                        if (link.contains("/pelicula/")) TvType.Movie else TvType.TvSeries,
-                        posterImg,
-                        null,
-                        null,
-                    )
+                    if (link.contains("/pelicula/")) {
+                        newMovieSearchResponse(title, link) {
+                            this.posterUrl = posterImg
+                        }
+                    } else {
+                        newTvSeriesSearchResponse(title, link) {
+                            this.posterUrl = posterImg
+                        }
+                    }
                 }
                 items.add(HomePageList(name, home))
             } catch (e: Exception) {
@@ -93,24 +87,13 @@ class CuevanaProvider : MainAPI() {
             val isSerie = href.contains("/serie/")
 
             if (isSerie) {
-                TvSeriesSearchResponse(
-                    title,
-                    href,
-                    this.name,
-                    TvType.TvSeries,
-                    image,
-                    null,
-                    null
-                )
+                newTvSeriesSearchResponse(title, href) {
+                    this.posterUrl = image
+                }
             } else {
-                MovieSearchResponse(
-                    title,
-                    href,
-                    this.name,
-                    TvType.Movie,
-                    image,
-                    null
-                )
+                newMovieSearchResponse(title, href) {
+                    this.posterUrl = image
+                }
             }
         }
     }
@@ -141,13 +124,11 @@ class CuevanaProvider : MainAPI() {
             val season = if (isValid) seasonEpisode.getOrNull(0) else null
             
             if (href.isNotEmpty()) {
-                Episode(
-                    href,
-                    null,
-                    season,
-                    episode,
-                    if (epThumb != null) fixUrl(epThumb) else null
-                )
+                newEpisode(href) {
+                    this.season = season
+                    this.episode = episode
+                    this.posterUrl = if (epThumb != null) fixUrl(epThumb) else null
+                }
             } else null
         }
         
@@ -169,14 +150,9 @@ class CuevanaProvider : MainAPI() {
             val recUrl = element.select("a").attr("href")
             if (recUrl.isEmpty()) return@mapNotNull null
             
-            MovieSearchResponse(
-                recTitle,
-                fixUrl(recUrl),
-                this.name,
-                TvType.Movie,
-                image,
-                year = null
-            )
+            newMovieSearchResponse(recTitle, fixUrl(recUrl)) {
+                this.posterUrl = image
+            }
         }
 
         return when (tvType) {
@@ -414,7 +390,7 @@ class CuevanaProvider : MainAPI() {
             async {
                 try {
                     val headers = mapOf(
-                        "Host" to "api.cuevana3.me",
+                        "Host" to "api.w3nv.cuevana.pro",
                         "User-Agent" to USER_AGENT,
                         "Accept" to "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
                         "Accept-Language" to "en-US,en;q=0.5",
