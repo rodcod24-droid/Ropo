@@ -164,9 +164,9 @@ class CuevanaProvider : MainAPI() {
 
     override suspend fun search(query: String): List<SearchResponse> {
         try {
-            val url = "$mainUrl/?s=$query"
+            val url = "$mainUrl/explorar?s=$query"
             val document = app.get(url, timeout = 120).document
-
+//https://cuevana.pro/explorar?s=
             return document.select("li.xxx.TPostMv, .search-item, .movie-item").mapNotNull { element ->
                 try {
                     val title = element.selectFirst("h2.Title, h2, h3, .title")?.text()?.trim() ?: return@mapNotNull null
