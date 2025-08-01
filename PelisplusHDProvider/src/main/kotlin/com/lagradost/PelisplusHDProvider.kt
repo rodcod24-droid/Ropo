@@ -43,24 +43,13 @@ class PelisplusHDProvider : MainAPI() {
         val posterUrl = this.select(".Posters-img").attr("src")
         val isMovie = href.contains("/pelicula/")
         return if (isMovie) {
-            MovieSearchResponse(
-                title,
-                href,
-                name,
-                TvType.Movie,
-                posterUrl,
-                null
-            )
+            newMovieSearchResponse(title, href) {
+                this.posterUrl = posterUrl
+            }
         } else {
-            TvSeriesSearchResponse(
-                title,
-                href,
-                name,
-                TvType.TvSeries,
-                posterUrl,
-                null,
-                null
-            )
+            newTvSeriesSearchResponse(title, href) {
+                this.posterUrl = posterUrl
+            }
         }
     }
 
@@ -75,24 +64,13 @@ class PelisplusHDProvider : MainAPI() {
             val isMovie = href.contains("/pelicula/")
 
             if (isMovie) {
-                MovieSearchResponse(
-                    title,
-                    href,
-                    this.name,
-                    TvType.Movie,
-                    image,
-                    null
-                )
+                newMovieSearchResponse(title, href) {
+                    this.posterUrl = image
+                }
             } else {
-                TvSeriesSearchResponse(
-                    title,
-                    href,
-                    this.name,
-                    TvType.TvSeries,
-                    image,
-                    null,
-                    null
-                )
+                newTvSeriesSearchResponse(title, href) {
+                    this.posterUrl = image
+                }
             }
         }
     }
@@ -113,12 +91,12 @@ class PelisplusHDProvider : MainAPI() {
             val isValid = seasonid.size == 2
             val episode = if (isValid) seasonid.getOrNull(1) else null
             val season = if (isValid) seasonid.getOrNull(0) else null
-            Episode(
-                href,
-                name,
-                season,
-                episode,
-            )
+            
+            newEpisode(href) {
+                this.name = name
+                this.season = season
+                this.episode = episode
+            }
         }
 
         val year = soup.selectFirst(".p-r-15 .text-semibold")!!.text().toIntOrNull()
