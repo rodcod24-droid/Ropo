@@ -3,6 +3,9 @@ package com.lagradost
 import com.lagradost.cloudstream3.*
 import com.lagradost.cloudstream3.utils.ExtractorLink
 import com.lagradost.cloudstream3.utils.loadExtractor
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.coroutineScope
 import org.jsoup.nodes.Element
 
 class PelisplusHDProvider : MainAPI() {
@@ -34,7 +37,7 @@ class PelisplusHDProvider : MainAPI() {
                 }
             ))
         }
-        return HomePageResponse(items)
+        return newHomePageResponse(items)
     }
 
     private fun Element.toSearchResult(): SearchResponse {
@@ -155,20 +158,24 @@ class PelisplusHDProvider : MainAPI() {
         isCasting: Boolean,
         subtitleCallback: (SubtitleFile) -> Unit,
         callback: (ExtractorLink) -> Unit
-    ): Boolean {
+    ): Boolean = coroutineScope {
         app.get(data).document.select("div.player > script").map { script ->
-            val scriptData = script.data()
-            extractVideoUrls(scriptData).map { url ->
-                // Convert fembed.php URLs to direct fembed URLs
-                if (url.contains("$mainUrl/fembed.php?url=")) {
-                    url.replace("$mainUrl/fembed.php?url=", "https://www.fembed.com/v/")
-                } else {
-                    url
-                }
-            }.apmap {
-                loadExtractor(it, data, subtitleCallback, callback)
+            async {
+                val scriptData = script.data()
+                extractVideoUrls(scriptData).map { url ->
+                    // Convert fembed.php URLs to direct fembed URLs
+                    if (url.contains("$mainUrl/fembed.php?url=")) {
+                        url.replace("$mainUrl/fembed.php?url=", "https://www.fembed.com/v/")
+                    } else {
+                        url
+                    }
+                }.map { url ->
+                    async {
+                        loadExtractor(url, data, subtitleCallback, callback)
+                    }
+                }.awaitAll()
             }
-        }
-        return true
+        }.awaitAll()
+        true
     }
 }
