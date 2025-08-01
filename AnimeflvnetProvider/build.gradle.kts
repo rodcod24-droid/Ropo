@@ -10,8 +10,8 @@ cloudstream {
     language = "es"
     // All of these properties are optional, you can safely remove them
 
-     description = "Funciona pe"
-     authors = listOf("Cloudburst")
+     //description = "Funciona pe"
+     //authors = listOf("Cloudburst")
 
     /**
      * Status int as the following:
