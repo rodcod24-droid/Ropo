@@ -38,15 +38,15 @@ class CinecalidadProvider : MainAPI() {
             val link = element.selectFirst("a")?.attr("href") ?: return@mapNotNull null
             val posterImg = element.selectFirst(".poster.custom img")?.attr("data-src") ?: return@mapNotNull null
             
-            TvSeriesSearchResponse(
-                title,
-                link,
-                this.name,
-                if (link.contains("/ver-pelicula/")) TvType.Movie else TvType.TvSeries,
-                posterImg,
-                null,
-                null,
-            )
+            if (link.contains("/ver-pelicula/")) {
+                newMovieSearchResponse(title, link) {
+                    this.posterUrl = posterImg
+                }
+            } else {
+                newTvSeriesSearchResponse(title, link) {
+                    this.posterUrl = posterImg
+                }
+            }
         }
 
         return newHomePageResponse(request.name, home)
@@ -63,24 +63,13 @@ class CinecalidadProvider : MainAPI() {
             val isMovie = href.contains("/ver-pelicula/")
 
             if (isMovie) {
-                MovieSearchResponse(
-                    title,
-                    href,
-                    this.name,
-                    TvType.Movie,
-                    image,
-                    null
-                )
+                newMovieSearchResponse(title, href) {
+                    this.posterUrl = image
+                }
             } else {
-                TvSeriesSearchResponse(
-                    title,
-                    href,
-                    this.name,
-                    TvType.TvSeries,
-                    image,
-                    null,
-                    null
-                )
+                newTvSeriesSearchResponse(title, href) {
+                    this.posterUrl = image
+                }
             }
         }
     }
@@ -104,13 +93,12 @@ class CinecalidadProvider : MainAPI() {
             val episode = if (isValid) seasonEpisode.getOrNull(1) else null
             val season = if (isValid) seasonEpisode.getOrNull(0) else null
             
-            Episode(
-                href,
-                name,
-                season,
-                episode,
-                if (epThumb?.contains("svg") == true) null else epThumb
-            )
+            newEpisode(href) {
+                this.name = name
+                this.season = season
+                this.episode = episode
+                this.posterUrl = if (epThumb?.contains("svg") == true) null else epThumb
+            }
         }
 
         val tvType = if (url.contains("/ver-pelicula/")) TvType.Movie else TvType.TvSeries
@@ -268,18 +256,4 @@ class CinecalidadProvider : MainAPI() {
                             val subtitleDownloadLinks = subtitlePage.select("a.link")
                             subtitleDownloadLinks.forEach { downloadLink ->
                                 val sublink = if (data.contains("serie") || data.contains("episodio")) {
-                                    "$data${downloadLink.attr("href")}"
-                                } else {
-                                    downloadLink.attr("href")
-                                }
-                                subtitleCallback(SubtitleFile(reallang, sublink))
-                            }
-                        }
-                    }
-                } catch (e: Exception) {
-                    // Subtitle processing failed, continue
-                }
-            }
-        }.awaitAll()
-    }
-}
+                                    "$data${downloadLink.attr
