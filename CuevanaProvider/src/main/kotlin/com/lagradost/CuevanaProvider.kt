@@ -11,7 +11,7 @@ import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
 
 class CuevanaProvider : MainAPI() {
-    override var mainUrl = "https://cuevana.pro"
+    override var mainUrl = "https://w3nv.cuevana.pro"
     override var name = "Cuevana"
     override var lang = "es"
     override val hasMainPage = true
@@ -35,17 +35,9 @@ class CuevanaProvider : MainAPI() {
                 )
             ).document
             
-            // Try different selectors for movies
-            val movieSelectors = listOf(
-                "div.MovieList .TPostMv",
-                ".movies .item",
-                ".content .item",
-                "article.item",
-                ".TPostMv"
-            )
-            
-            for (selector in movieSelectors) {
-                val movies = document.select(selector).take(20).mapNotNull { element ->
+            // Get movies section
+            try {
+                val moviesList = document.select(".MovieList .TPostMv, .home-movies .TPostMv, section.movies .TPostMv").take(15).mapNotNull { element ->
                     try {
                         val titleElement = element.selectFirst("h2.Title, h3.Title, .title, h2, h3")
                         val title = titleElement?.text()?.trim() ?: return@mapNotNull null
@@ -61,14 +53,8 @@ class CuevanaProvider : MainAPI() {
                             }
                         }
                         
-                        if (fullLink.contains("/pelicula/") || fullLink.contains("/movie/")) {
-                            newMovieSearchResponse(title, fullLink) {
-                                this.posterUrl = poster
-                            }
-                        } else {
-                            newTvSeriesSearchResponse(title, fullLink) {
-                                this.posterUrl = poster
-                            }
+                        newMovieSearchResponse(title, fullLink) {
+                            this.posterUrl = poster
                         }
                     } catch (e: Exception) {
                         logError(e)
@@ -76,13 +62,14 @@ class CuevanaProvider : MainAPI() {
                     }
                 }
                 
-                if (movies.isNotEmpty()) {
-                    items.add(HomePageList("Películas Populares", movies))
-                    break
+                if (moviesList.isNotEmpty()) {
+                    items.add(HomePageList("Películas", moviesList))
                 }
+            } catch (e: Exception) {
+                logError(e)
             }
             
-            // Try to get series
+            // Get series section
             try {
                 val seriesUrls = listOf("$mainUrl/serie", "$mainUrl/series")
                 for (seriesUrl in seriesUrls) {
@@ -93,7 +80,7 @@ class CuevanaProvider : MainAPI() {
                             headers = mapOf("User-Agent" to "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36")
                         ).document
                         
-                        val series = seriesDoc.select(".TPostMv, .item, article.item").take(20).mapNotNull { element ->
+                        val series = seriesDoc.select(".MovieList .TPostMv, .home-series .TPostMv, section.series .TPostMv").take(15).mapNotNull { element ->
                             try {
                                 val title = element.selectFirst("h2.Title, h3.Title, .title, h2, h3")?.text()?.trim() 
                                     ?: return@mapNotNull null
@@ -125,12 +112,45 @@ class CuevanaProvider : MainAPI() {
                 logError(e)
             }
             
+            // Get releases/estrenos
+            try {
+                val estrenosDoc = app.get("$mainUrl/estrenos", timeout = 120, headers = mapOf("User-Agent" to "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36")).document
+                val estrenosList = estrenosDoc.select(".MovieList .TPostMv, section li.TPostMv").take(15).mapNotNull { element ->
+                    try {
+                        val title = element.selectFirst("h2.Title, h3.Title, .title, h2, h3")?.text()?.trim() ?: return@mapNotNull null
+                        val link = element.selectFirst("a")?.attr("href") ?: return@mapNotNull null
+                        val fullLink = if (link.startsWith("http")) link else "$mainUrl$link"
+                        val poster = element.selectFirst("img")?.run {
+                            listOf("data-src", "data-lazy-src", "src").firstNotNullOfOrNull { attr ->
+                                attr(attr).takeIf { it.isNotEmpty() && !it.contains("data:image") }
+                            }
+                        }
+                        
+                        if (fullLink.contains("/pelicula/") || fullLink.contains("/movie/")) {
+                            newMovieSearchResponse(title, fullLink) {
+                                this.posterUrl = poster
+                            }
+                        } else {
+                            newTvSeriesSearchResponse(title, fullLink) {
+                                this.posterUrl = poster
+                            }
+                        }
+                    } catch (e: Exception) {
+                        null
+                    }
+                }
+                if (estrenosList.isNotEmpty()) {
+                    items.add(HomePageList("Estrenos", estrenosList))
+                }
+            } catch (e: Exception) {
+                logError(e)
+            }
+            
         } catch (e: Exception) {
             logError(e)
         }
 
         if (items.isEmpty()) {
-            // Return empty list instead of throwing exception
             return HomePageResponse(listOf(HomePageList("No Content", emptyList())))
         }
         return HomePageResponse(items)
@@ -284,8 +304,11 @@ class CuevanaProvider : MainAPI() {
                 headers = mapOf("User-Agent" to "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36")
             ).document
             
-            val tasks = doc.select("iframe, .player iframe, .video-player iframe").map { iframe ->
-                async {
+            val tasks = mutableListOf<kotlinx.coroutines.Deferred<Unit>>()
+            
+            // Look for iframes first
+            doc.select("iframe").forEach { iframe ->
+                tasks.add(async {
                     try {
                         val iframeUrl = iframe.attr("data-src").takeIf { it.isNotEmpty() }
                             ?: iframe.attr("src").takeIf { it.isNotEmpty() }
@@ -296,7 +319,63 @@ class CuevanaProvider : MainAPI() {
                     } catch (e: Exception) {
                         logError(e)
                     }
-                }
+                })
+            }
+            
+            // Look for script tags with video URLs
+            doc.select("script").forEach { script ->
+                tasks.add(async {
+                    try {
+                        val scriptContent = script.data()
+                        if (scriptContent.contains("http")) {
+                            // Extract video URLs from different patterns
+                            val patterns = listOf(
+                                Regex("file:\\s*[\"']([^\"']+)[\"']"),
+                                Regex("src:\\s*[\"']([^\"']+)[\"']"),
+                                Regex("url:\\s*[\"']([^\"']+)[\"']"),
+                                Regex("[\"']([^\"']*(?:fembed|streamtape|doodstream|uqload|mixdrop|upstream|voe)[^\"']*)[\"']")
+                            )
+                            
+                            patterns.forEach { pattern ->
+                                pattern.findAll(scriptContent).forEach { match ->
+                                    val url = match.groupValues[1]
+                                    if (url.startsWith("http")) {
+                                        loadExtractor(url, data, subtitleCallback, callback)
+                                    }
+                                }
+                            }
+                        }
+                    } catch (e: Exception) {
+                        logError(e)
+                    }
+                })
+            }
+            
+            // Look for player options or buttons that might contain links
+            doc.select("[data-option], [data-server], .player-option, .server-option").forEach { option ->
+                tasks.add(async {
+                    try {
+                        val optionUrl = option.attr("data-option")
+                            ?: option.attr("data-server")
+                            ?: option.attr("data-url")
+                            ?: return@async
+                        
+                        if (optionUrl.startsWith("http")) {
+                            loadExtractor(optionUrl, data, subtitleCallback, callback)
+                        } else if (optionUrl.isNotEmpty()) {
+                            // Try to get the actual video URL from the option
+                            val playerDoc = app.get("$mainUrl$optionUrl", headers = mapOf("User-Agent" to "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"))
+                            val playerIframe = playerDoc.document.selectFirst("iframe")
+                            val playerUrl = playerIframe?.attr("src") ?: playerIframe?.attr("data-src")
+                            if (!playerUrl.isNullOrEmpty()) {
+                                val fullPlayerUrl = if (playerUrl.startsWith("http")) playerUrl else "$mainUrl$playerUrl"
+                                loadExtractor(fullPlayerUrl, data, subtitleCallback, callback)
+                            }
+                        }
+                    } catch (e: Exception) {
+                        logError(e)
+                    }
+                })
             }
             
             tasks.awaitAll()
