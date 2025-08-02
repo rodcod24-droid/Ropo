@@ -151,9 +151,9 @@ class CuevanaProvider : MainAPI() {
         }
 
         if (items.isEmpty()) {
-            return HomePageResponse(listOf(HomePageList("No Content", emptyList())))
+            return newHomePageResponse(listOf(HomePageList("No Content", emptyList())))
         }
-        return HomePageResponse(items)
+        return newHomePageResponse(items)
     }
 
     override suspend fun search(query: String): List<SearchResponse> {
