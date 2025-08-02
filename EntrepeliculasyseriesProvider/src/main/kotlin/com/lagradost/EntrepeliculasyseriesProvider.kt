@@ -1,4 +1,26 @@
-override suspend fun getMainPage(page: Int, request: MainPageRequest): HomePageResponse {
+package com.lagradost
+
+import com.lagradost.cloudstream3.*
+import com.lagradost.cloudstream3.mvvm.logError
+import com.lagradost.cloudstream3.utils.ExtractorLink
+import com.lagradost.cloudstream3.utils.loadExtractor
+
+class EntrepeliculasyseriesProvider : MainAPI() {
+    override var mainUrl = "https://entrepeliculasyseries.nz"
+    override var name = "EntrePeliculasySeries"
+    override var lang = "es"
+    override val hasMainPage = true
+    override val hasChromecastSupport = true
+    override val hasDownloadSupport = true
+    override val supportedTypes = setOf(
+        TvType.Movie,
+        TvType.TvSeries,
+    )
+    override val vpnStatus = VPNStatus.MightBeNeeded
+
+    private val userAgent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36"
+
+    override suspend fun getMainPage(page: Int, request: MainPageRequest): HomePageResponse {
         val items = ArrayList<HomePageList>()
         
         // Try different sections with specific URLs
@@ -92,138 +114,11 @@ override suspend fun getMainPage(page: Int, request: MainPageRequest): HomePageR
                         }
                     } catch (e: Exception) {
                         null
-                    }package com.lagradost
-
-import com.lagradost.cloudstream3.*
-import com.lagradost.cloudstream3.mvvm.logError
-import com.lagradost.cloudstream3.utils.ExtractorLink
-import com.lagradost.cloudstream3.utils.loadExtractor
-
-class EntrepeliculasyseriesProvider : MainAPI() {
-    override var mainUrl = "https://entrepeliculasyseries.nz"
-    override var name = "EntrePeliculasySeries"
-    override var lang = "es"
-    override val hasMainPage = true
-    override val hasChromecastSupport = true
-    override val hasDownloadSupport = true
-    override val supportedTypes = setOf(
-        TvType.Movie,
-        TvType.TvSeries,
-    )
-    override val vpnStatus = VPNStatus.MightBeNeeded
-
-    private val userAgent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36"
-
-    override suspend fun getMainPage(page: Int, request: MainPageRequest): HomePageResponse {
-        val items = ArrayList<HomePageList>()
-        
-        // Try different main page approaches
-        val sections = listOf(
-            Triple("Películas", "$mainUrl/peliculas", listOf(".movies .item", ".content .item", "article.item")),
-            Triple("Series", "$mainUrl/series", listOf(".series .item", ".content .item", "article.item")),
-            Triple("Estrenos", "$mainUrl/estrenos", listOf(".releases .item", ".content .item", "article.item"))
-        )
-        
-        for ((sectionName, sectionUrl, selectors) in sections) {
-            try {
-                val soup = app.get(
-                    sectionUrl, 
-                    timeout = 120,
-                    headers = mapOf("User-Agent" to userAgent)
-                ).document
-                
-                for (selector in selectors) {
-                    val elements = soup.select(selector)
-                    if (elements.isNotEmpty()) {
-                        val sectionItems = elements.take(20).mapNotNull { element ->
-                            try {
-                                val title = element.selectFirst("h2, h3, .title")?.text()?.trim()
-                                    ?: return@mapNotNull null
-                                
-                                val link = element.selectFirst("a")?.attr("href") ?: return@mapNotNull null
-                                val fullLink = if (link.startsWith("http")) link else "$mainUrl$link"
-                                
-                                val posterImg = element.selectFirst("img")?.run {
-                                    listOf("data-src", "data-lazy-src", "src").firstNotNullOfOrNull { attr ->
-                                        attr(attr).takeIf { it.isNotEmpty() && !it.contains("data:image") }
-                                    }
-                                }
-                                
-                                if (fullLink.contains("/pelicula/") || fullLink.contains("/movie/")) {
-                                    newMovieSearchResponse(title, fullLink) {
-                                        this.posterUrl = posterImg
-                                    }
-                                } else {
-                                    newTvSeriesSearchResponse(title, fullLink) {
-                                        this.posterUrl = posterImg
-                                    }
-                                }
-                            } catch (e: Exception) {
-                                logError(e)
-                                null
-                            }
-                        }
-                        
-                        if (sectionItems.isNotEmpty()) {
-                            items.add(HomePageList(sectionName, sectionItems))
-                            break
-                        }
                     }
                 }
-            } catch (e: Exception) {
-                logError(e)
-                continue
-            }
-        }
-
-        // Fallback: try main page
-        if (items.isEmpty()) {
-            try {
-                val mainDoc = app.get(
-                    mainUrl, 
-                    timeout = 120,
-                    headers = mapOf("User-Agent" to userAgent)
-                ).document
                 
-                val fallbackSelectors = listOf(
-                    ".movies .item", ".series .item", ".content .item", 
-                    "article.item", ".movie-item", ".post"
-                )
-                
-                for (selector in fallbackSelectors) {
-                    val elements = mainDoc.select(selector)
-                    if (elements.isNotEmpty()) {
-                        val fallbackItems = elements.take(30).mapNotNull { element ->
-                            try {
-                                val title = element.selectFirst("h2, h3, .title")?.text()?.trim()
-                                    ?: return@mapNotNull null
-                                val link = element.selectFirst("a")?.attr("href") ?: return@mapNotNull null
-                                val fullLink = if (link.startsWith("http")) link else "$mainUrl$link"
-                                val posterImg = element.selectFirst("img")?.run {
-                                    listOf("data-src", "data-lazy-src", "src").firstNotNullOfOrNull { attr ->
-                                        attr(attr).takeIf { it.isNotEmpty() && !it.contains("data:image") }
-                                    }
-                                }
-                                
-                                if (fullLink.contains("/pelicula/")) {
-                                    newMovieSearchResponse(title, fullLink) {
-                                        this.posterUrl = posterImg
-                                    }
-                                } else {
-                                    newTvSeriesSearchResponse(title, fullLink) {
-                                        this.posterUrl = posterImg
-                                    }
-                                }
-                            } catch (e: Exception) {
-                                null
-                            }
-                        }
-                        
-                        if (fallbackItems.isNotEmpty()) {
-                            items.add(HomePageList("Contenido", fallbackItems))
-                            break
-                        }
-                    }
+                if (fallbackItems.isNotEmpty()) {
+                    items.add(HomePageList("Contenido", fallbackItems))
                 }
             } catch (e: Exception) {
                 logError(e)
