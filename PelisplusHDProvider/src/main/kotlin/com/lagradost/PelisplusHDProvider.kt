@@ -26,16 +26,11 @@ class PelisplusHDProvider : MainAPI() {
     override suspend fun getMainPage(page: Int, request: MainPageRequest): HomePageResponse {
         return try {
             val items = ArrayList<HomePageList>()
-            val document = app.get(
-                mainUrl, 
-                timeout = 120,
-                headers = mapOf("User-Agent" to userAgent)
-            ).document
             
-            // Get movies section
+            // Get Movies Section
             try {
                 val moviesDoc = app.get("$mainUrl/peliculas", timeout = 120, headers = mapOf("User-Agent" to userAgent)).document
-                val movieItems = moviesDoc.select(".MovieList .TPostMv, .movies .item").take(15).mapNotNull { element ->
+                val movieItems = moviesDoc.select("a.Posters-link, .MovieList .TPostMv, .movies .item").take(20).mapNotNull { element ->
                     element.toSearchResult()
                 }
                 if (movieItems.isNotEmpty()) {
@@ -45,10 +40,10 @@ class PelisplusHDProvider : MainAPI() {
                 logError(e)
             }
             
-            // Get series section
+            // Get Series Section  
             try {
                 val seriesDoc = app.get("$mainUrl/series", timeout = 120, headers = mapOf("User-Agent" to userAgent)).document
-                val seriesItems = seriesDoc.select(".MovieList .TPostMv, .series .item").take(15).mapNotNull { element ->
+                val seriesItems = seriesDoc.select("a.Posters-link, .MovieList .TPostMv, .series .item").take(20).mapNotNull { element ->
                     element.toSearchResult()
                 }
                 if (seriesItems.isNotEmpty()) {
@@ -58,10 +53,10 @@ class PelisplusHDProvider : MainAPI() {
                 logError(e)
             }
             
-            // Get anime section
+            // Get Anime Section
             try {
                 val animeDoc = app.get("$mainUrl/animes", timeout = 120, headers = mapOf("User-Agent" to userAgent)).document
-                val animeItems = animeDoc.select(".MovieList .TPostMv, .anime .item").take(15).mapNotNull { element ->
+                val animeItems = animeDoc.select("a.Posters-link, .MovieList .TPostMv, .anime .item").take(20).mapNotNull { element ->
                     element.toSearchResult()
                 }
                 if (animeItems.isNotEmpty()) {
@@ -71,9 +66,10 @@ class PelisplusHDProvider : MainAPI() {
                 logError(e)
             }
             
-            // Fallback: get any content from main page
+            // Fallback: get content from main page if sections are empty
             if (items.isEmpty()) {
-                val fallbackItems = document.select(".MovieList .TPostMv, .content .item, .movie-item").take(30).mapNotNull { element ->
+                val document = app.get(mainUrl, timeout = 120, headers = mapOf("User-Agent" to userAgent)).document  
+                val fallbackItems = document.select("a.Posters-link, .MovieList .TPostMv, .content .item").take(30).mapNotNull { element ->
                     element.toSearchResult()
                 }
                 if (fallbackItems.isNotEmpty()) {
@@ -92,23 +88,20 @@ class PelisplusHDProvider : MainAPI() {
 
     private fun Element.toSearchResult(): SearchResponse? {
         return try {
-            // Get title from various possible selectors
             val title = this.selectFirst("h2.Title, h3.Title, .title, .listing-content p")?.text()?.trim()
                 ?: this.attr("title").takeIf { it.isNotEmpty() }
                 ?: return null
             
-            // Get link
             val href = this.selectFirst("a")?.attr("href")
                 ?: this.attr("href").takeIf { it.isNotEmpty() }
                 ?: return null
             
             val fullHref = if (href.startsWith("http")) href else "$mainUrl$href"
             
-            // Get poster image
-            val posterUrl = this.selectFirst("img")?.run {
-                listOf("data-src", "data-lazy-src", "src").firstNotNullOfOrNull { attr ->
-                    attr(attr).takeIf { it.isNotEmpty() && !it.contains("data:image") }
-                }
+            val posterUrl = this.selectFirst("img.Posters-img, img")?.run {
+                attr("data-src").takeIf { it.isNotEmpty() && !it.contains("data:image") }
+                    ?: attr("data-lazy-src").takeIf { it.isNotEmpty() && !it.contains("data:image") }
+                    ?: attr("src").takeIf { it.isNotEmpty() && !it.contains("data:image") }
             }
             
             val isMovie = fullHref.contains("/pelicula/") || 
@@ -132,42 +125,12 @@ class PelisplusHDProvider : MainAPI() {
 
     override suspend fun search(query: String): List<SearchResponse> {
         return try {
-            val searchUrls = listOf(
-                "$mainUrl/?s=${query.replace(" ", "+")}",
-                "$mainUrl/search?q=${query.replace(" ", "+")}",
-                "$mainUrl/buscar?s=${query.replace(" ", "+")}"
-            )
+            val searchUrl = "$mainUrl/?s=${query.replace(" ", "+")}"
+            val document = app.get(searchUrl, timeout = 120, headers = mapOf("User-Agent" to userAgent)).document
             
-            for (url in searchUrls) {
-                try {
-                    val document = app.get(
-                        url, 
-                        timeout = 120,
-                        headers = mapOf("User-Agent" to userAgent)
-                    ).document
-                    
-                    val contentSelectors = listOf(
-                        "a.Posters-link",
-                        ".search-results .item",
-                        ".movies .item",
-                        ".content .item",
-                        "article.item"
-                    )
-                    
-                    for (selector in contentSelectors) {
-                        val results = document.select(selector).mapNotNull { element ->
-                            element.toSearchResult()
-                        }
-                        
-                        if (results.isNotEmpty()) return results
-                    }
-                } catch (e: Exception) {
-                    logError(e)
-                    continue
-                }
+            document.select("a.Posters-link, .MovieList .TPostMv, .search-results .item").mapNotNull { element ->
+                element.toSearchResult()
             }
-            
-            emptyList()
         } catch (e: Exception) {
             logError(e)
             emptyList()
@@ -176,23 +139,14 @@ class PelisplusHDProvider : MainAPI() {
 
     override suspend fun load(url: String): LoadResponse? {
         return try {
-            val soup = app.get(
-                url, 
-                timeout = 120,
-                headers = mapOf("User-Agent" to userAgent)
-            ).document
+            val soup = app.get(url, timeout = 120, headers = mapOf("User-Agent" to userAgent)).document
 
-            // Get title from multiple selectors
             val title = soup.selectFirst("h1, .title, .movie-title")?.text()?.trim() ?: return null
-            
-            // Get description
             val description = soup.selectFirst(".description, .synopsis, .overview, .plot")?.text()?.trim()
-            
-            // Get poster
             val poster = soup.selectFirst("img.poster, .movie-poster img, img")?.run {
-                listOf("data-src", "data-lazy-src", "src").firstNotNullOfOrNull { attr ->
-                    attr(attr).takeIf { it.isNotEmpty() && !it.contains("data:image") }
-                }
+                attr("data-src").takeIf { it.isNotEmpty() && !it.contains("data:image") }
+                    ?: attr("data-lazy-src").takeIf { it.isNotEmpty() && !it.contains("data:image") }
+                    ?: attr("src").takeIf { it.isNotEmpty() && !it.contains("data:image") }
             }
             
             // Extract year
@@ -200,7 +154,7 @@ class PelisplusHDProvider : MainAPI() {
             val year = Regex("(19|20)\\d{2}").find(yearText)?.value?.toIntOrNull()
             
             // Get episodes for series
-            val episodes = soup.select(".episodes .episode, .season .episode, .episode-list li").mapNotNull { li ->
+            val episodes = soup.select(".episodes .episode, .season .episode, .episode-list li, .TPostMv").mapNotNull { li ->
                 try {
                     val href = li.selectFirst("a")?.attr("href") ?: return@mapNotNull null
                     val fullHref = if (href.startsWith("http")) href else "$mainUrl$href"
@@ -209,7 +163,7 @@ class PelisplusHDProvider : MainAPI() {
                     val numberText = li.selectFirst(".episode-number, .number")?.text() ?: href
                     
                     // Parse season and episode numbers
-                    val seasonEpisodePattern = Regex("temporada[/-]?(\\d+)[/-]?.*?capitulo[/-]?(\\d+)|s(\\d+)e(\\d+)|(\\d+)x(\\d+)")
+                    val seasonEpisodePattern = Regex("temporada[/-]?(\\d+)[/-]?.*?capitulo[/-]?(\\d+)|s(\\d+)e(\\d+)|(\\d+)x(\\d+)", RegexOption.IGNORE_CASE)
                     val match = seasonEpisodePattern.find(numberText.lowercase())
                     
                     val season = match?.let { 
@@ -235,7 +189,6 @@ class PelisplusHDProvider : MainAPI() {
                 }
             }
 
-            // Get genres/tags
             val tags = soup.select(".genres a, .genre, .tags a").map { 
                 it.text().trim() 
             }.filter { it.isNotEmpty() }
@@ -278,18 +231,60 @@ class PelisplusHDProvider : MainAPI() {
         callback: (ExtractorLink) -> Unit
     ): Boolean = coroutineScope {
         return@coroutineScope try {
-            val doc = app.get(
-                data, 
-                timeout = 120,
-                headers = mapOf("User-Agent" to userAgent)
-            ).document
+            val doc = app.get(data, timeout = 120, headers = mapOf("User-Agent" to userAgent)).document
             
             val tasks = mutableListOf<kotlinx.coroutines.Deferred<Unit>>()
             
-            // Look for iframes with video content
-            val iframes = doc.select("iframe, .player iframe, .video-player iframe")
+            // Method 1: Look for player buttons/tabs
+            doc.select(".TPlayer.embed_div, .player, .video-player").forEach { playerDiv ->
+                tasks.add(async {
+                    try {
+                        // Look for iframes within player divs
+                        val iframe = playerDiv.selectFirst("iframe")
+                        if (iframe != null) {
+                            val iframeUrl = iframe.attr("data-src").takeIf { it.isNotEmpty() }
+                                ?: iframe.attr("src").takeIf { it.isNotEmpty() }
+                                ?: return@async
+                            
+                            val fullUrl = if (iframeUrl.startsWith("http")) iframeUrl else "$mainUrl$iframeUrl"
+                            loadExtractor(fullUrl, data, subtitleCallback, callback)
+                        }
+                    } catch (e: Exception) {
+                        logError(e)
+                    }
+                })
+            }
             
-            iframes.forEach { iframe ->
+            // Method 2: Look for server/option buttons
+            doc.select("[data-option], [data-server], .server-option, .player-option").forEach { option ->
+                tasks.add(async {
+                    try {
+                        val optionValue = option.attr("data-option")
+                            ?: option.attr("data-server")
+                            ?: return@async
+                        
+                        if (optionValue.startsWith("http")) {
+                            loadExtractor(optionValue, data, subtitleCallback, callback)
+                        } else {
+                            // Try to construct player URL
+                            val playerUrl = "$mainUrl/wp-content/plugins/player/player.php?data=$optionValue"
+                            val playerDoc = app.get(playerUrl, headers = mapOf("User-Agent" to userAgent)).document
+                            val playerIframe = playerDoc.selectFirst("iframe")
+                            if (playerIframe != null) {
+                                val playerSrc = playerIframe.attr("src")
+                                if (playerSrc.startsWith("http")) {
+                                    loadExtractor(playerSrc, data, subtitleCallback, callback)
+                                }
+                            }
+                        }
+                    } catch (e: Exception) {
+                        logError(e)
+                    }
+                })
+            }
+            
+            // Method 3: Direct iframes
+            doc.select("iframe").forEach { iframe ->
                 tasks.add(async {
                     try {
                         val iframeUrl = iframe.attr("data-src").takeIf { it.isNotEmpty() }
@@ -304,35 +299,11 @@ class PelisplusHDProvider : MainAPI() {
                 })
             }
             
-            // Also look for script tags that might contain video URLs
-            val scripts = doc.select("script")
-            scripts.forEach { script ->
+            // Method 4: Script analysis
+            doc.select("script").forEach { script ->
                 tasks.add(async {
                     try {
                         val scriptContent = script.data()
-                        if (scriptContent.contains("http") && (scriptContent.contains(".mp4") || scriptContent.contains(".m3u8"))) {
-                            // Extract URLs from script
-                            val urlPattern = Regex("(?:\"|\')([^\"\']*(?:\\.mp4|\\.m3u8)[^\"\']*?)(?:\"|\')")
-                            val matches = urlPattern.findAll(scriptContent)
-                            
-                            matches.forEach { match ->
-                                val url = match.groupValues[1]
-                                if (url.startsWith("http")) {
-                                    loadExtractor(url, data, subtitleCallback, callback)
-                                }
-                            }
-                        }
-                    } catch (e: Exception) {
-                        logError(e)
-                    }
-                })
-            }
-            
-            tasks.awaitAll()
-            true
-        } catch (e: Exception) {
-            logError(e)
-            false
-        }
-    }
-}
+                        if (scriptContent.contains("http")) {
+                            val videoPatterns = listOf(
+                                Regex("(?:\"|\')([^\"\']*(?:fembed|embedsb|streamtape|doodstream|uqload|mixdrop|upstream|voe|streamwish|filemoon)[^\"\']*?)(?:\"|\')", RegexOption.IGNORE_
