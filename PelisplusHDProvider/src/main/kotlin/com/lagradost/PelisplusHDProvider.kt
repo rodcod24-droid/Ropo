@@ -10,7 +10,7 @@ import kotlinx.coroutines.coroutineScope
 import org.jsoup.nodes.Element
 
 class PelisplusHDProvider : MainAPI() {
-    override var mainUrl = "https://pelisplushd.nz"
+    override var mainUrl = "https://pelisplushd.mx"
     override var name = "PelisplusHD"
     override var lang = "es"
     override val hasMainPage = true
@@ -32,48 +32,52 @@ class PelisplusHDProvider : MainAPI() {
                 headers = mapOf("User-Agent" to userAgent)
             ).document
             
-            // Try different content selectors
-            val contentMaps = listOf(
-                "Películas" to listOf(".movies .item", ".peliculas .item", "a.Posters-link"),
-                "Series" to listOf(".series .item", ".tv-shows .item", ".series-list .item"),
-                "Destacadas" to listOf(".featured .item", ".destacadas .item", ".slider .item")
-            )
-            
-            for ((sectionName, selectors) in contentMaps) {
-                for (selector in selectors) {
-                    val elements = document.select(selector)
-                    if (elements.isNotEmpty()) {
-                        val sectionItems = elements.take(20).mapNotNull { element ->
-                            element.toSearchResult()
-                        }
-                        if (sectionItems.isNotEmpty()) {
-                            items.add(HomePageList(sectionName, sectionItems))
-                            break
-                        }
-                    }
+            // Get movies section
+            try {
+                val moviesDoc = app.get("$mainUrl/peliculas", timeout = 120, headers = mapOf("User-Agent" to userAgent)).document
+                val movieItems = moviesDoc.select(".MovieList .TPostMv, .movies .item").take(15).mapNotNull { element ->
+                    element.toSearchResult()
                 }
+                if (movieItems.isNotEmpty()) {
+                    items.add(HomePageList("Películas", movieItems))
+                }
+            } catch (e: Exception) {
+                logError(e)
             }
             
-            // Fallback - get any content
+            // Get series section
+            try {
+                val seriesDoc = app.get("$mainUrl/series", timeout = 120, headers = mapOf("User-Agent" to userAgent)).document
+                val seriesItems = seriesDoc.select(".MovieList .TPostMv, .series .item").take(15).mapNotNull { element ->
+                    element.toSearchResult()
+                }
+                if (seriesItems.isNotEmpty()) {
+                    items.add(HomePageList("Series", seriesItems))
+                }
+            } catch (e: Exception) {
+                logError(e)
+            }
+            
+            // Get anime section
+            try {
+                val animeDoc = app.get("$mainUrl/animes", timeout = 120, headers = mapOf("User-Agent" to userAgent)).document
+                val animeItems = animeDoc.select(".MovieList .TPostMv, .anime .item").take(15).mapNotNull { element ->
+                    element.toSearchResult()
+                }
+                if (animeItems.isNotEmpty()) {
+                    items.add(HomePageList("Anime", animeItems))
+                }
+            } catch (e: Exception) {
+                logError(e)
+            }
+            
+            // Fallback: get any content from main page
             if (items.isEmpty()) {
-                val fallbackSelectors = listOf(
-                    "a.Posters-link",
-                    ".content .item",
-                    ".movie-item",
-                    "article.item"
-                )
-                
-                for (selector in fallbackSelectors) {
-                    val elements = document.select(selector)
-                    if (elements.isNotEmpty()) {
-                        val fallbackItems = elements.take(30).mapNotNull { element ->
-                            element.toSearchResult()
-                        }
-                        if (fallbackItems.isNotEmpty()) {
-                            items.add(HomePageList("Contenido", fallbackItems))
-                            break
-                        }
-                    }
+                val fallbackItems = document.select(".MovieList .TPostMv, .content .item, .movie-item").take(30).mapNotNull { element ->
+                    element.toSearchResult()
+                }
+                if (fallbackItems.isNotEmpty()) {
+                    items.add(HomePageList("Contenido", fallbackItems))
                 }
             }
             
@@ -89,7 +93,7 @@ class PelisplusHDProvider : MainAPI() {
     private fun Element.toSearchResult(): SearchResponse? {
         return try {
             // Get title from various possible selectors
-            val title = this.selectFirst("h2, h3, .title, .listing-content p")?.text()?.trim()
+            val title = this.selectFirst("h2.Title, h3.Title, .title, .listing-content p")?.text()?.trim()
                 ?: this.attr("title").takeIf { it.isNotEmpty() }
                 ?: return null
             
@@ -109,7 +113,7 @@ class PelisplusHDProvider : MainAPI() {
             
             val isMovie = fullHref.contains("/pelicula/") || 
                          fullHref.contains("/movie/") || 
-                         !fullHref.contains("/serie/")
+                         fullHref.contains("/movies/")
             
             if (isMovie) {
                 newMovieSearchResponse(title, fullHref) {
