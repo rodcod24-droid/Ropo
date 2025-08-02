@@ -1,4 +1,98 @@
-package com.lagradost
+override suspend fun getMainPage(page: Int, request: MainPageRequest): HomePageResponse {
+        val items = ArrayList<HomePageList>()
+        
+        // Try different sections with specific URLs
+        val sections = listOf(
+            Triple("Películas", "$mainUrl/peliculas", listOf(".MovieList .TPostMv", ".movies .item", ".content .item")),
+            Triple("Series", "$mainUrl/series", listOf(".MovieList .TPostMv", ".series .item", ".content .item")),
+            Triple("Anime", "$mainUrl/animes", listOf(".MovieList .TPostMv", ".anime .item", ".content .item"))
+        )
+        
+        for ((sectionName, sectionUrl, selectors) in sections) {
+            try {
+                val soup = app.get(
+                    sectionUrl, 
+                    timeout = 120,
+                    headers = mapOf("User-Agent" to userAgent)
+                ).document
+                
+                for (selector in selectors) {
+                    val elements = soup.select(selector)
+                    if (elements.isNotEmpty()) {
+                        val sectionItems = elements.take(15).mapNotNull { element ->
+                            try {
+                                val title = element.selectFirst("h2.Title, h3.Title, .title")?.text()?.trim()
+                                    ?: return@mapNotNull null
+                                
+                                val link = element.selectFirst("a")?.attr("href") ?: return@mapNotNull null
+                                val fullLink = if (link.startsWith("http")) link else "$mainUrl$link"
+                                
+                                val posterImg = element.selectFirst("img")?.run {
+                                    listOf("data-src", "data-lazy-src", "src").firstNotNullOfOrNull { attr ->
+                                        attr(attr).takeIf { it.isNotEmpty() && !it.contains("data:image") }
+                                    }
+                                }
+                                
+                                if (fullLink.contains("/pelicula/") || fullLink.contains("/movie/")) {
+                                    newMovieSearchResponse(title, fullLink) {
+                                        this.posterUrl = posterImg
+                                    }
+                                } else {
+                                    newTvSeriesSearchResponse(title, fullLink) {
+                                        this.posterUrl = posterImg
+                                    }
+                                }
+                            } catch (e: Exception) {
+                                logError(e)
+                                null
+                            }
+                        }
+                        
+                        if (sectionItems.isNotEmpty()) {
+                            items.add(HomePageList(sectionName, sectionItems))
+                            break
+                        }
+                    }
+                }
+            } catch (e: Exception) {
+                logError(e)
+                continue
+            }
+        }
+
+        // Fallback: try main page
+        if (items.isEmpty()) {
+            try {
+                val mainDoc = app.get(
+                    mainUrl, 
+                    timeout = 120,
+                    headers = mapOf("User-Agent" to userAgent)
+                ).document
+                
+                val fallbackItems = mainDoc.select(".MovieList .TPostMv, .content .item, .movie-item").take(30).mapNotNull { element ->
+                    try {
+                        val title = element.selectFirst("h2.Title, h3.Title, .title")?.text()?.trim()
+                            ?: return@mapNotNull null
+                        val link = element.selectFirst("a")?.attr("href") ?: return@mapNotNull null
+                        val fullLink = if (link.startsWith("http")) link else "$mainUrl$link"
+                        val posterImg = element.selectFirst("img")?.run {
+                            listOf("data-src", "data-lazy-src", "src").firstNotNullOfOrNull { attr ->
+                                attr(attr).takeIf { it.isNotEmpty() && !it.contains("data:image") }
+                            }
+                        }
+                        
+                        if (fullLink.contains("/pelicula/")) {
+                            newMovieSearchResponse(title, fullLink) {
+                                this.posterUrl = posterImg
+                            }
+                        } else {
+                            newTvSeriesSearchResponse(title, fullLink) {
+                                this.posterUrl = posterImg
+                            }
+                        }
+                    } catch (e: Exception) {
+                        null
+                    }package com.lagradost
 
 import com.lagradost.cloudstream3.*
 import com.lagradost.cloudstream3.mvvm.logError
