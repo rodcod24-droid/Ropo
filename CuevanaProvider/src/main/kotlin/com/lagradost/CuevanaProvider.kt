@@ -11,7 +11,7 @@ import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
 
 class CuevanaProvider : MainAPI() {
-    override var mainUrl = "https://w3vn.cuevana.pro"
+    override var mainUrl = "https://cuevana.pro"
     override var name = "Cuevana"
     override var lang = "es"
     override val hasMainPage = true
@@ -26,24 +26,42 @@ class CuevanaProvider : MainAPI() {
         val items = ArrayList<HomePageList>()
         
         try {
-            // Get main page content
-            val document = app.get(mainUrl, timeout = 120).document
+            // Get main page content with proper headers
+            val document = app.get(
+                mainUrl, 
+                timeout = 120,
+                headers = mapOf(
+                    "User-Agent" to "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36"
+                )
+            ).document
             
-            // Try to find movies section
-            val moviesSection = document.select("section.home-movies li, .movies-section li, section li.xxx.TPostMv").take(20)
-            if (moviesSection.isNotEmpty()) {
-                val moviesList = moviesSection.mapNotNull { element ->
+            // Try different selectors for movies
+            val movieSelectors = listOf(
+                "div.MovieList .TPostMv",
+                ".movies .item",
+                ".content .item",
+                "article.item",
+                ".TPostMv"
+            )
+            
+            for (selector in movieSelectors) {
+                val movies = document.select(selector).take(20).mapNotNull { element ->
                     try {
-                        val title = element.selectFirst("h2.Title, h2, .title")?.text()?.trim() ?: return@mapNotNull null
-                        val link = element.selectFirst("a")?.attr("href") ?: return@mapNotNull null
+                        val titleElement = element.selectFirst("h2.Title, h3.Title, .title, h2, h3")
+                        val title = titleElement?.text()?.trim() ?: return@mapNotNull null
+                        
+                        val linkElement = element.selectFirst("a") ?: titleElement?.parent()?.selectFirst("a") 
+                        val link = linkElement?.attr("href") ?: return@mapNotNull null
                         val fullLink = if (link.startsWith("http")) link else "$mainUrl$link"
-                        val poster = element.selectFirst("img")?.run {
-                            attr("data-src").takeIf { it.isNotEmpty() }
-                                ?: attr("data-lazy-src").takeIf { it.isNotEmpty() }
-                                ?: attr("src").takeIf { it.isNotEmpty() }
+                        
+                        val posterElement = element.selectFirst("img")
+                        val poster = posterElement?.run {
+                            listOf("data-src", "data-lazy-src", "src").firstNotNullOfOrNull { attr ->
+                                attr(attr).takeIf { it.isNotEmpty() && !it.contains("data:image") }
+                            }
                         }
                         
-                        if (fullLink.contains("/pelicula/")) {
+                        if (fullLink.contains("/pelicula/") || fullLink.contains("/movie/")) {
                             newMovieSearchResponse(title, fullLink) {
                                 this.posterUrl = poster
                             }
@@ -53,198 +71,182 @@ class CuevanaProvider : MainAPI() {
                             }
                         }
                     } catch (e: Exception) {
+                        logError(e)
                         null
                     }
                 }
-                if (moviesList.isNotEmpty()) {
-                    items.add(HomePageList("Películas", moviesList))
+                
+                if (movies.isNotEmpty()) {
+                    items.add(HomePageList("Películas Populares", movies))
+                    break
                 }
             }
             
-            // Try to get series from dedicated series page
+            // Try to get series
             try {
-                val seriesDoc = app.get("$mainUrl/serie", timeout = 120).document
-                val seriesList = seriesDoc.select("section.home-series li, section li.xxx.TPostMv").take(20).mapNotNull { element ->
+                val seriesUrls = listOf("$mainUrl/serie", "$mainUrl/series")
+                for (seriesUrl in seriesUrls) {
                     try {
-                        val title = element.selectFirst("h2.Title, h2, .title")?.text()?.trim() ?: return@mapNotNull null
-                        val link = element.selectFirst("a")?.attr("href") ?: return@mapNotNull null
-                        val fullLink = if (link.startsWith("http")) link else "$mainUrl$link"
-                        val poster = element.selectFirst("img")?.run {
-                            attr("data-src").takeIf { it.isNotEmpty() }
-                                ?: attr("data-lazy-src").takeIf { it.isNotEmpty() }
-                                ?: attr("src").takeIf { it.isNotEmpty() }
+                        val seriesDoc = app.get(
+                            seriesUrl, 
+                            timeout = 120,
+                            headers = mapOf("User-Agent" to "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36")
+                        ).document
+                        
+                        val series = seriesDoc.select(".TPostMv, .item, article.item").take(20).mapNotNull { element ->
+                            try {
+                                val title = element.selectFirst("h2.Title, h3.Title, .title, h2, h3")?.text()?.trim() 
+                                    ?: return@mapNotNull null
+                                val link = element.selectFirst("a")?.attr("href") ?: return@mapNotNull null
+                                val fullLink = if (link.startsWith("http")) link else "$mainUrl$link"
+                                val poster = element.selectFirst("img")?.run {
+                                    listOf("data-src", "data-lazy-src", "src").firstNotNullOfOrNull { attr ->
+                                        attr(attr).takeIf { it.isNotEmpty() && !it.contains("data:image") }
+                                    }
+                                }
+                                
+                                newTvSeriesSearchResponse(title, fullLink) {
+                                    this.posterUrl = poster
+                                }
+                            } catch (e: Exception) {
+                                null
+                            }
                         }
                         
-                        newTvSeriesSearchResponse(title, fullLink) {
-                            this.posterUrl = poster
+                        if (series.isNotEmpty()) {
+                            items.add(HomePageList("Series", series))
+                            break
                         }
                     } catch (e: Exception) {
-                        null
+                        continue
                     }
-                }
-                if (seriesList.isNotEmpty()) {
-                    items.add(HomePageList("Series", seriesList))
                 }
             } catch (e: Exception) {
                 logError(e)
-            }
-            
-            // Try to get releases/estrenos
-            try {
-                val estrenosDoc = app.get("$mainUrl/estrenos", timeout = 120).document
-                val estrenosList = estrenosDoc.select("section li.xxx.TPostMv, .movies-list li").take(20).mapNotNull { element ->
-                    try {
-                        val title = element.selectFirst("h2.Title, h2, .title")?.text()?.trim() ?: return@mapNotNull null
-                        val link = element.selectFirst("a")?.attr("href") ?: return@mapNotNull null
-                        val fullLink = if (link.startsWith("http")) link else "$mainUrl$link"
-                        val poster = element.selectFirst("img")?.run {
-                            attr("data-src").takeIf { it.isNotEmpty() }
-                                ?: attr("data-lazy-src").takeIf { it.isNotEmpty() }
-                                ?: attr("src").takeIf { it.isNotEmpty() }
-                        }
-                        
-                        if (fullLink.contains("/pelicula/")) {
-                            newMovieSearchResponse(title, fullLink) {
-                                this.posterUrl = poster
-                            }
-                        } else {
-                            newTvSeriesSearchResponse(title, fullLink) {
-                                this.posterUrl = poster
-                            }
-                        }
-                    } catch (e: Exception) {
-                        null
-                    }
-                }
-                if (estrenosList.isNotEmpty()) {
-                    items.add(HomePageList("Estrenos", estrenosList))
-                }
-            } catch (e: Exception) {
-                logError(e)
-            }
-            
-            // Fallback: get any content from main page
-            if (items.isEmpty()) {
-                val fallbackContent = document.select("li.xxx.TPostMv, .movie-item, .content-item").take(30).mapNotNull { element ->
-                    try {
-                        val title = element.selectFirst("h2.Title, h2, h3, .title")?.text()?.trim() ?: return@mapNotNull null
-                        val link = element.selectFirst("a")?.attr("href") ?: return@mapNotNull null
-                        val fullLink = if (link.startsWith("http")) link else "$mainUrl$link"
-                        val poster = element.selectFirst("img")?.run {
-                            attr("data-src").takeIf { it.isNotEmpty() }
-                                ?: attr("data-lazy-src").takeIf { it.isNotEmpty() }
-                                ?: attr("src").takeIf { it.isNotEmpty() }
-                        }
-                        
-                        if (fullLink.contains("/pelicula/")) {
-                            newMovieSearchResponse(title, fullLink) {
-                                this.posterUrl = poster
-                            }
-                        } else {
-                            newTvSeriesSearchResponse(title, fullLink) {
-                                this.posterUrl = poster
-                            }
-                        }
-                    } catch (e: Exception) {
-                        null
-                    }
-                }
-                if (fallbackContent.isNotEmpty()) {
-                    items.add(HomePageList("Contenido", fallbackContent))
-                }
             }
             
         } catch (e: Exception) {
             logError(e)
         }
 
-        if (items.isEmpty()) throw ErrorLoadingException()
+        if (items.isEmpty()) {
+            // Return empty list instead of throwing exception
+            return HomePageResponse(listOf(HomePageList("No Content", emptyList())))
+        }
         return HomePageResponse(items)
     }
 
     override suspend fun search(query: String): List<SearchResponse> {
-        try {
-            val url = "$mainUrl/explorar?s=$query"
-            val document = app.get(url, timeout = 120).document
-//https://cuevana.pro/explorar?s=
-            return document.select("li.xxx.TPostMv, .search-item, .movie-item").mapNotNull { element ->
+        return try {
+            val searchUrls = listOf(
+                "$mainUrl/?s=$query",
+                "$mainUrl/search?s=$query"
+            )
+            
+            for (url in searchUrls) {
                 try {
-                    val title = element.selectFirst("h2.Title, h2, h3, .title")?.text()?.trim() ?: return@mapNotNull null
-                    val href = element.selectFirst("a")?.attr("href") ?: return@mapNotNull null
-                    val fullHref = if (href.startsWith("http")) href else "$mainUrl$href"
-                    val image = element.selectFirst("img")?.run {
-                        attr("data-src").takeIf { it.isNotEmpty() }
-                            ?: attr("data-lazy-src").takeIf { it.isNotEmpty() }
-                            ?: attr("src").takeIf { it.isNotEmpty() }
-                    }
-                    val isSerie = fullHref.contains("/serie/")
-
-                    if (isSerie) {
-                        newTvSeriesSearchResponse(title, fullHref) {
-                            this.posterUrl = image
+                    val document = app.get(
+                        url, 
+                        timeout = 120,
+                        headers = mapOf("User-Agent" to "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36")
+                    ).document
+                    
+                    val results = document.select(".TPostMv, .item, .search-item, article.item").mapNotNull { element ->
+                        try {
+                            val title = element.selectFirst("h2.Title, h3.Title, .title, h2, h3")?.text()?.trim() 
+                                ?: return@mapNotNull null
+                            val href = element.selectFirst("a")?.attr("href") ?: return@mapNotNull null
+                            val fullHref = if (href.startsWith("http")) href else "$mainUrl$href"
+                            val image = element.selectFirst("img")?.run {
+                                listOf("data-src", "data-lazy-src", "src").firstNotNullOfOrNull { attr ->
+                                    attr(attr).takeIf { it.isNotEmpty() && !it.contains("data:image") }
+                                }
+                            }
+                            
+                            val isSerie = fullHref.contains("/serie/") || fullHref.contains("/series/")
+                            
+                            if (isSerie) {
+                                newTvSeriesSearchResponse(title, fullHref) {
+                                    this.posterUrl = image
+                                }
+                            } else {
+                                newMovieSearchResponse(title, fullHref) {
+                                    this.posterUrl = image
+                                }
+                            }
+                        } catch (e: Exception) {
+                            null
                         }
-                    } else {
-                        newMovieSearchResponse(title, fullHref) {
-                            this.posterUrl = image
-                        }
                     }
+                    
+                    if (results.isNotEmpty()) return results
                 } catch (e: Exception) {
-                    null
+                    continue
                 }
             }
+            emptyList()
         } catch (e: Exception) {
             logError(e)
-            return emptyList()
+            emptyList()
         }
     }
 
     override suspend fun load(url: String): LoadResponse? {
-        try {
-            val soup = app.get(url, timeout = 120).document
-            val title = soup.selectFirst("h1.Title, h1")?.text()?.trim() ?: return null
-            val description = soup.selectFirst(".Description p, .description")?.text()?.trim()
-            val poster = soup.selectFirst(".movtv-info div.Image img, .poster img")?.run {
-                attr("data-src").takeIf { it.isNotEmpty() } ?: attr("src")
+        return try {
+            val soup = app.get(
+                url, 
+                timeout = 120,
+                headers = mapOf("User-Agent" to "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36")
+            ).document
+            
+            val title = soup.selectFirst("h1.Title, h1, .entry-title")?.text()?.trim() ?: return null
+            val description = soup.selectFirst(".Description p, .description, .wp-content p")?.text()?.trim()
+            val poster = soup.selectFirst(".movtv-info img, .poster img, .wp-post-image")?.run {
+                listOf("data-src", "data-lazy-src", "src").firstNotNullOfOrNull { attr ->
+                    attr(attr).takeIf { it.isNotEmpty() && !it.contains("data:image") }
+                }
             }
             
-            // Extract year
-            val year1 = soup.selectFirst("footer p.meta, .year")?.html() ?: ""
-            val yearRegex = Regex("<span>(\\d+)</span>|(\\d{4})")
-            val yearMatch = yearRegex.find(year1)?.destructured?.component1() ?: yearRegex.find(year1)?.destructured?.component2()
-            val year = yearMatch?.toIntOrNull()
+            // Extract year from various possible locations
+            val yearText = soup.selectFirst(".date, .year, .meta, footer p")?.text() ?: ""
+            val year = Regex("(19|20)\\d{2}").find(yearText)?.value?.toIntOrNull()
             
             // Extract episodes for series
-            val episodes = soup.select(".all-episodes li.TPostMv article, .episodes-list .episode").mapNotNull { li ->
+            val episodes = soup.select(".episodios .item, .episodes .episode, .TPostMv").mapNotNull { li ->
                 try {
-                    val href = li.select("a").attr("href")
-                    if (href.isEmpty()) return@mapNotNull null
+                    val href = li.selectFirst("a")?.attr("href") ?: return@mapNotNull null
                     val fullHref = if (href.startsWith("http")) href else "$mainUrl$href"
                     
-                    val epThumb = li.selectFirst("div.Image img, img")?.run {
-                        attr("data-src").takeIf { it.isNotEmpty() } ?: attr("src")
+                    val epThumb = li.selectFirst("img")?.run {
+                        listOf("data-src", "data-lazy-src", "src").firstNotNullOfOrNull { attr ->
+                            attr(attr).takeIf { it.isNotEmpty() && !it.contains("data:image") }
+                        }
                     }
-                    val seasonEpisodeText = li.selectFirst("span.Year, .episode-number")?.text() ?: ""
                     
-                    // Parse season and episode numbers
-                    val seasonEpisode = seasonEpisodeText.split("x").mapNotNull { it.toIntOrNull() }
-                    val isValid = seasonEpisode.size == 2
-                    val episode = if (isValid) seasonEpisode.getOrNull(1) else null
-                    val season = if (isValid) seasonEpisode.getOrNull(0) else null
+                    val episodeText = li.selectFirst(".numerando, .episode-number, .num")?.text() ?: ""
+                    val episodeName = li.selectFirst("h3, .title, .episode-title")?.text()?.trim()
+                    
+                    // Try to parse season and episode
+                    val seasonEpisodePattern = Regex("(\\d+)[-x](\\d+)")
+                    val match = seasonEpisodePattern.find(episodeText)
+                    val season = match?.groupValues?.get(1)?.toIntOrNull() ?: 1
+                    val episode = match?.groupValues?.get(2)?.toIntOrNull()
                     
                     newEpisode(fullHref) {
+                        this.name = episodeName
                         this.season = season
                         this.episode = episode
-                        this.posterUrl = epThumb?.let { if (it.startsWith("http")) it else "$mainUrl$it" }
+                        this.posterUrl = epThumb
                     }
                 } catch (e: Exception) {
                     null
                 }
             }
             
-            val tags = soup.select("ul.InfoList li.AAIco-adjust:contains(Genero) a, .genres a").map { it.text() }
+            val tags = soup.select(".genres a, .genre a, .meta a").map { it.text().trim() }
             val tvType = if (episodes.isEmpty()) TvType.Movie else TvType.TvSeries
             
-            return when (tvType) {
+            when (tvType) {
                 TvType.TvSeries -> {
                     newTvSeriesLoadResponse(title, url, TvType.TvSeries, episodes) {
                         this.posterUrl = poster
@@ -265,13 +267,9 @@ class CuevanaProvider : MainAPI() {
             }
         } catch (e: Exception) {
             logError(e)
-            return null
+            null
         }
     }
-
-    data class Femcuevana(
-        @JsonProperty("url") val url: String,
-    )
 
     override suspend fun loadLinks(
         data: String,
@@ -279,25 +277,29 @@ class CuevanaProvider : MainAPI() {
         subtitleCallback: (SubtitleFile) -> Unit,
         callback: (ExtractorLink) -> Unit
     ): Boolean = coroutineScope {
-        try {
-            val doc = app.get(data, timeout = 120).document
-            val iframes = doc.select("div.TPlayer.embed_div iframe, .player iframe")
+        return@coroutineScope try {
+            val doc = app.get(
+                data, 
+                timeout = 120,
+                headers = mapOf("User-Agent" to "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36")
+            ).document
             
-            iframes.map { iframe ->
+            val tasks = doc.select("iframe, .player iframe, .video-player iframe").map { iframe ->
                 async {
                     try {
                         val iframeUrl = iframe.attr("data-src").takeIf { it.isNotEmpty() }
-                            ?: iframe.attr("src")
-                        if (iframeUrl.isNotEmpty()) {
-                            val fullUrl = if (iframeUrl.startsWith("http")) iframeUrl else "$mainUrl$iframeUrl"
-                            loadExtractor(fullUrl, data, subtitleCallback, callback)
-                        }
+                            ?: iframe.attr("src").takeIf { it.isNotEmpty() }
+                            ?: return@async
+                        
+                        val fullUrl = if (iframeUrl.startsWith("http")) iframeUrl else "$mainUrl$iframeUrl"
+                        loadExtractor(fullUrl, data, subtitleCallback, callback)
                     } catch (e: Exception) {
                         logError(e)
                     }
                 }
-            }.awaitAll()
+            }
             
+            tasks.awaitAll()
             true
         } catch (e: Exception) {
             logError(e)
