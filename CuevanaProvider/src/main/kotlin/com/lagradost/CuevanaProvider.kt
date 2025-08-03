@@ -6,6 +6,7 @@ import com.lagradost.cloudstream3.mvvm.logError
 import com.lagradost.cloudstream3.utils.AppUtils.parseJson
 import com.lagradost.cloudstream3.utils.ExtractorLink
 import com.lagradost.cloudstream3.utils.loadExtractor
+import com.lagradost.cloudstream3.utils.Qualities
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
@@ -476,11 +477,12 @@ class CuevanaProvider : MainAPI() {
                     val videoUrl = match.groupValues[1]
                     if (videoUrl.startsWith("http") && (videoUrl.contains(".mp4") || videoUrl.contains(".m3u8"))) {
                         callback.invoke(
-                            newExtractorLink(
+                            ExtractorLink(
+                                "Cuevana",
                                 "Cuevana Direct",
                                 videoUrl,
                                 data,
-                                720,
+                                Qualities.Unknown.value,
                                 videoUrl.contains(".m3u8")
                             )
                         )
@@ -500,11 +502,12 @@ class CuevanaProvider : MainAPI() {
                         val videoUrl = match.groupValues[1]
                         if (videoUrl.startsWith("http")) {
                             callback.invoke(
-                                newExtractorLink(
+                                ExtractorLink(
+                                    "Cuevana",
                                     "Cuevana Video",
                                     videoUrl,
                                     data,
-                                    720,
+                                    Qualities.Unknown.value,
                                     videoUrl.contains(".m3u8")
                                 )
                             )
@@ -694,11 +697,12 @@ class CuevanaProvider : MainAPI() {
                                 val videoUrl = videoMatch.groupValues[1]
                                 if (videoUrl.startsWith("http")) {
                                     callback.invoke(
-                                        newExtractorLink(
+                                        ExtractorLink(
+                                            "Cuevana",
                                             "Cuevana AJAX",
                                             videoUrl,
                                             data,
-                                            720,
+                                            Qualities.Unknown.value,
                                             videoUrl.contains(".m3u8")
                                         )
                                     )
