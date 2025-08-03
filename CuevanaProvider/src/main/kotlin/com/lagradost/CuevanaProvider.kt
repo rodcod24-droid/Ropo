@@ -163,12 +163,12 @@ class CuevanaProvider : MainAPI() {
                     urlRegex.findAll(content).forEach { match ->
                         val videoUrl = match.value
                         callback(
-                            ExtractorLink(
+                            newExtractorLink(
                                 source = name,
                                 name = name,
                                 url = videoUrl,
                                 referer = data,
-                                quality = Qualities.Unknown.value,
+                                quality = getQualityFromName(""),
                                 isM3u8 = videoUrl.contains("m3u8")
                             )
                         )
