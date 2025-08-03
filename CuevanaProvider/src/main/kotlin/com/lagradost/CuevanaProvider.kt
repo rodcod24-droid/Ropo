@@ -21,6 +21,11 @@ class CuevanaProvider : MainAPI() {
         TvType.Movie,
         TvType.TvSeries,
     )
+        override val mainPage = mainPageOf(
+        Pair("$mainUrl/series/", "Series"),
+        Pair("$mainUrl/peliculas/", "Peliculas"),
+        Pair("$mainUrl/animes/", "Anime"),
+    )
 
     private val userAgent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36"
 
