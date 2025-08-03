@@ -35,35 +35,43 @@ class CuevanaProvider : MainAPI() {
         
         for ((url, sectionName, sectionType) in sections) {
             try {
-                val doc = app.get(url, timeout = 120).document
+                val doc = app.get(url, 
+                    timeout = 120,
+                    headers = mapOf(
+                        "User-Agent" to "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36"
+                    )
+                ).document
                 
-                // Try multiple possible selectors for content items
+                // Enhanced selectors for content items
                 val possibleSelectors = listOf(
-                    "section.home-series li",                    // Original selector for series
-                    "section li.xxx.TPostMv",                   // Original selector for movies
-                    "li.xxx.TPostMv",                           // Without section
-                    "article.TPost",                            // Common article format
-                    "div.TPost",                                // Div format
-                    ".MovieList article",                       // MovieList container
-                    ".item.movies",                             // Item movies
-                    "div.item",                                 // Generic item
-                    ".movie-item",                              // Movie item
-                    ".serie-item",                              // Serie item
-                    "article",                                  // Generic articles
-                    ".post-item",                               // Post items
-                    ".content-item",                            // Content items
-                    "[class*='movie']",                         // Any class containing 'movie'
-                    "[class*='serie']",                         // Any class containing 'serie'
-                    "[class*='post']"                           // Any class containing 'post'
+                    "section.home-series li",
+                    "section li.xxx.TPostMv",
+                    "li.xxx.TPostMv",
+                    "article.TPost",
+                    "div.TPost",
+                    ".MovieList article",
+                    ".MovieList li",
+                    ".item.movies",
+                    "div.item",
+                    ".movie-item",
+                    ".serie-item",
+                    "article",
+                    ".post-item",
+                    ".content-item",
+                    "[class*='movie']",
+                    "[class*='serie']",
+                    "[class*='post']",
+                    ".TPMvCn",
+                    ".TPost",
+                    "div[class*='Movie']",
+                    "li[class*='TPost']"
                 )
                 
                 var elements: org.jsoup.select.Elements? = null
-                var usedSelector = ""
                 
                 for (selector in possibleSelectors) {
                     elements = doc.select(selector)
                     if (elements.isNotEmpty()) {
-                        usedSelector = selector
                         break
                     }
                 }
@@ -71,23 +79,50 @@ class CuevanaProvider : MainAPI() {
                 if (elements != null && elements.isNotEmpty()) {
                     val homeItems = elements.mapNotNull { element ->
                         try {
-                            // Try multiple title selectors
-                            val title = element.selectFirst("h2.Title")?.text()?.trim()
-                                ?: element.selectFirst("h2")?.text()?.trim()
-                                ?: element.selectFirst("h3")?.text()?.trim()
-                                ?: element.selectFirst(".title")?.text()?.trim()
-                                ?: element.selectFirst(".movie-title")?.text()?.trim()
-                                ?: element.selectFirst("a")?.attr("title")?.trim()
+                            // Enhanced title extraction
+                            val titleElement = element.selectFirst("h2.Title")
+                                ?: element.selectFirst("h2")
+                                ?: element.selectFirst("h3")
+                                ?: element.selectFirst(".title")
+                                ?: element.selectFirst(".movie-title")
+                                ?: element.selectFirst("a[title]")
+                                ?: element.selectFirst("a")
+                            
+                            val title = titleElement?.text()?.trim()
+                                ?: titleElement?.attr("title")?.trim()
                                 ?: return@mapNotNull null
                             
-                            val link = element.selectFirst("a")?.attr("href") ?: return@mapNotNull null
+                            if (title.isEmpty()) return@mapNotNull null
                             
-                            // Try multiple image selectors
-                            val poster = element.selectFirst("img.lazy")?.attr("data-src")
-                                ?: element.selectFirst("img")?.attr("data-src")
-                                ?: element.selectFirst("img")?.attr("src")
-                                ?: element.selectFirst("img")?.attr("data-lazy-src")
+                            // Enhanced link extraction
+                            val linkElement = element.selectFirst("a")
+                            val rawLink = linkElement?.attr("href") ?: return@mapNotNull null
+                            val link = if (rawLink.startsWith("http")) {
+                                rawLink
+                            } else if (rawLink.startsWith("/")) {
+                                "$mainUrl$rawLink"
+                            } else {
+                                "$mainUrl/$rawLink"
+                            }
+                            
+                            // Enhanced image extraction
+                            val imgElement = element.selectFirst("img.lazy")
+                                ?: element.selectFirst("img[data-src]")
+                                ?: element.selectFirst("img[data-lazy-src]")
+                                ?: element.selectFirst("img")
+                            
+                            val rawPoster = imgElement?.attr("data-src")
+                                ?: imgElement?.attr("data-lazy-src")
+                                ?: imgElement?.attr("src")
                                 ?: return@mapNotNull null
+                            
+                            val poster = if (rawPoster.startsWith("http")) {
+                                rawPoster
+                            } else if (rawPoster.startsWith("/")) {
+                                "$mainUrl$rawPoster"
+                            } else {
+                                "$mainUrl/$rawPoster"
+                            }
                             
                             // Determine type based on URL or section
                             when {
@@ -128,20 +163,29 @@ class CuevanaProvider : MainAPI() {
     }
 
     override suspend fun search(query: String): List<SearchResponse> {
-        val searchUrl = "$mainUrl/?s=${query}"
-        val document = app.get(searchUrl, timeout = 120).document
+        val searchUrl = "$mainUrl/?s=${query.replace(" ", "+")}"
+        val document = app.get(searchUrl, 
+            timeout = 120,
+            headers = mapOf(
+                "User-Agent" to "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36"
+            )
+        ).document
 
-        // Try multiple selectors for search results
+        // Enhanced selectors for search results
         val possibleSelectors = listOf(
             "li.xxx.TPostMv",
             "article.TPost", 
             "div.TPost",
             ".MovieList article",
+            ".MovieList li",
             ".item.movies",
             "div.item",
             "article",
             ".search-result",
-            ".post-item"
+            ".post-item",
+            ".TPMvCn",
+            "div[class*='Movie']",
+            "li[class*='TPost']"
         )
         
         var elements: org.jsoup.select.Elements? = null
@@ -153,18 +197,48 @@ class CuevanaProvider : MainAPI() {
         
         return elements?.mapNotNull { element ->
             try {
-                val title = element.selectFirst("h2.Title")?.text()?.trim()
-                    ?: element.selectFirst("h2")?.text()?.trim()
-                    ?: element.selectFirst("h3")?.text()?.trim()
-                    ?: element.selectFirst(".title")?.text()?.trim()
+                // Enhanced title extraction
+                val titleElement = element.selectFirst("h2.Title")
+                    ?: element.selectFirst("h2")
+                    ?: element.selectFirst("h3")
+                    ?: element.selectFirst(".title")
+                    ?: element.selectFirst("a[title]")
+                    ?: element.selectFirst("a")
+                
+                val title = titleElement?.text()?.trim()
+                    ?: titleElement?.attr("title")?.trim()
                     ?: return@mapNotNull null
                 
-                val href = element.selectFirst("a")?.attr("href") ?: return@mapNotNull null
+                if (title.isEmpty()) return@mapNotNull null
                 
-                val image = element.selectFirst("img.lazy")?.attr("data-src")
-                    ?: element.selectFirst("img")?.attr("data-src")
-                    ?: element.selectFirst("img")?.attr("src")
+                // Enhanced link extraction
+                val rawHref = element.selectFirst("a")?.attr("href") ?: return@mapNotNull null
+                val href = if (rawHref.startsWith("http")) {
+                    rawHref
+                } else if (rawHref.startsWith("/")) {
+                    "$mainUrl$rawHref"
+                } else {
+                    "$mainUrl/$rawHref"
+                }
+                
+                // Enhanced image extraction
+                val imgElement = element.selectFirst("img.lazy")
+                    ?: element.selectFirst("img[data-src]")
+                    ?: element.selectFirst("img[data-lazy-src]")
+                    ?: element.selectFirst("img")
+                
+                val rawImage = imgElement?.attr("data-src")
+                    ?: imgElement?.attr("data-lazy-src")
+                    ?: imgElement?.attr("src")
                     ?: return@mapNotNull null
+                
+                val image = if (rawImage.startsWith("http")) {
+                    rawImage
+                } else if (rawImage.startsWith("/")) {
+                    "$mainUrl$rawImage"
+                } else {
+                    "$mainUrl/$rawImage"
+                }
                 
                 val isSerie = href.contains("/serie/")
 
@@ -186,52 +260,99 @@ class CuevanaProvider : MainAPI() {
 
     override suspend fun load(url: String): LoadResponse? {
         try {
-            val soup = app.get(url, timeout = 120).document
+            val soup = app.get(url, 
+                timeout = 120,
+                headers = mapOf(
+                    "User-Agent" to "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36"
+                )
+            ).document
 
-            // Try multiple title selectors
-            val title = soup.selectFirst("h1.Title")?.text()?.trim()
-                ?: soup.selectFirst("h1")?.text()?.trim()
-                ?: soup.selectFirst(".movie-title")?.text()?.trim()
-                ?: soup.selectFirst(".title")?.text()?.trim()
-                ?: return null
+            // Enhanced title extraction
+            val titleElement = soup.selectFirst("h1.Title")
+                ?: soup.selectFirst("h1")
+                ?: soup.selectFirst(".movie-title")
+                ?: soup.selectFirst(".title")
+                ?: soup.selectFirst("title")
+            
+            val title = titleElement?.text()?.trim()?.let { text ->
+                // Clean up title by removing common suffixes
+                text.replace(Regex("\\s*-\\s*(Ver|Watch|Online|Gratis|HD).*$", RegexOption.IGNORE_CASE), "")
+                    .replace(Regex("\\s*\\|.*$"), "")
+                    .trim()
+            } ?: return null
                 
-            // Try multiple description selectors
+            // Enhanced description extraction
             val description = soup.selectFirst(".Description p")?.text()?.trim()
                 ?: soup.selectFirst(".synopsis")?.text()?.trim()
                 ?: soup.selectFirst(".overview")?.text()?.trim()
+                ?: soup.selectFirst("meta[name='description']")?.attr("content")?.trim()
                 ?: soup.selectFirst("p")?.text()?.trim()
             
-            // Try multiple poster selectors
-            val poster = soup.selectFirst(".movtv-info div.Image img")?.attr("data-src")
-                ?: soup.selectFirst(".poster img")?.attr("data-src")
-                ?: soup.selectFirst("img")?.attr("data-src")
-                ?: soup.selectFirst(".movtv-info div.Image img")?.attr("src")
-                ?: soup.selectFirst(".poster img")?.attr("src")
-                ?: soup.selectFirst("img")?.attr("src")
+            // Enhanced poster extraction
+            val posterElement = soup.selectFirst(".movtv-info div.Image img")
+                ?: soup.selectFirst(".poster img")
+                ?: soup.selectFirst("img[data-src]")
+                ?: soup.selectFirst("img")
             
-            // Extract year
-            val year1 = soup.selectFirst("footer p.meta")?.toString() 
+            val rawPoster = posterElement?.attr("data-src")
+                ?: posterElement?.attr("src")
+            
+            val poster = rawPoster?.let { raw ->
+                if (raw.startsWith("http")) {
+                    raw
+                } else if (raw.startsWith("/")) {
+                    "$mainUrl$raw"
+                } else {
+                    "$mainUrl/$raw"
+                }
+            }
+            
+            // Enhanced year extraction
+            val yearText = soup.selectFirst("footer p.meta")?.toString() 
                 ?: soup.selectFirst(".year")?.text()
-                ?: soup.selectFirst(".date")?.text() ?: ""
+                ?: soup.selectFirst(".date")?.text()
+                ?: soup.selectFirst("meta[property='video:release_date']")?.attr("content")
+                ?: ""
             val yearRegex = Regex("(\\d{4})")
-            val year = yearRegex.find(year1)?.value?.toIntOrNull()
+            val year = yearRegex.find(yearText)?.value?.toIntOrNull()
 
-            // Try multiple episode selectors
-            val episodes = soup.select(".all-episodes li.TPostMv article, .episodes .episode, .episode-list .episode, li.episode").mapNotNull { li ->
+            // Enhanced episode extraction
+            val episodes = soup.select(".all-episodes li.TPostMv article, .episodes .episode, .episode-list .episode, li.episode, .TPostMv").mapNotNull { li ->
                 try {
-                    val href = li.selectFirst("a")?.attr("href") ?: return@mapNotNull null
+                    val epLink = li.selectFirst("a")?.attr("href") ?: return@mapNotNull null
+                    val href = if (epLink.startsWith("http")) {
+                        epLink
+                    } else if (epLink.startsWith("/")) {
+                        "$mainUrl$epLink"
+                    } else {
+                        "$mainUrl/$epLink"
+                    }
                     
-                    val epThumb = li.selectFirst("div.Image img")?.attr("data-src")
-                        ?: li.selectFirst("img.lazy")?.attr("data-src")
-                        ?: li.selectFirst("img")?.attr("data-src")
-                        ?: li.selectFirst("img")?.attr("src")
+                    val thumbElement = li.selectFirst("div.Image img")
+                        ?: li.selectFirst("img.lazy")
+                        ?: li.selectFirst("img[data-src]")
+                        ?: li.selectFirst("img")
                     
-                    // Try multiple episode number selectors
+                    val rawThumb = thumbElement?.attr("data-src")
+                        ?: thumbElement?.attr("src")
+                    
+                    val epThumb = rawThumb?.let { raw ->
+                        if (raw.startsWith("http")) {
+                            raw
+                        } else if (raw.startsWith("/")) {
+                            "$mainUrl$raw"
+                        } else {
+                            "$mainUrl/$raw"
+                        }
+                    }
+                    
+                    // Enhanced episode number extraction
                     val seasonEpisodeText = li.selectFirst("span.Year")?.text()
                         ?: li.selectFirst(".episode-number")?.text()
-                        ?: li.selectFirst(".number")?.text() ?: ""
+                        ?: li.selectFirst(".number")?.text()
+                        ?: li.selectFirst("h2")?.text() ?: ""
                     
-                    val seasonEpisode = seasonEpisodeText.split("x").mapNotNull { it.toIntOrNull() }
+                    val seasonEpisode = seasonEpisodeText.split("x").mapNotNull { it.trim().toIntOrNull() }
                     val isValid = seasonEpisode.size == 2
                     val season = if (isValid) seasonEpisode.getOrNull(0) else 1
                     val episode = if (isValid) seasonEpisode.getOrNull(1) else null
@@ -240,7 +361,7 @@ class CuevanaProvider : MainAPI() {
                         this.name = null
                         this.season = season
                         this.episode = episode
-                        this.posterUrl = epThumb?.let { fixUrl(it) }
+                        this.posterUrl = epThumb
                     }
                 } catch (e: Exception) {
                     logError(e)
@@ -251,7 +372,7 @@ class CuevanaProvider : MainAPI() {
             val tags = soup.select("ul.InfoList li.AAIco-adjust:contains(Genero) a, .genres a, .genre a").map { it.text() }
             val tvType = if (episodes.isEmpty()) TvType.Movie else TvType.TvSeries
             
-            // Try multiple recommendation selectors
+            // Enhanced recommendations extraction
             val recelement = if (tvType == TvType.TvSeries) 
                 "main section div.series_listado.series div.xxx, .recommendations .item, .related .item"
             else 
@@ -263,10 +384,30 @@ class CuevanaProvider : MainAPI() {
                         ?: element.selectFirst("h3")?.text()
                         ?: element.selectFirst(".title")?.text()
                         ?: return@mapNotNull null
-                    val image = element.selectFirst("figure img")?.attr("data-src")
-                        ?: element.selectFirst("img")?.attr("data-src")
-                        ?: element.selectFirst("img")?.attr("src")
-                    val recUrl = fixUrl(element.selectFirst("a")?.attr("href") ?: return@mapNotNull null)
+                    
+                    val imgEl = element.selectFirst("figure img")
+                        ?: element.selectFirst("img[data-src]")
+                        ?: element.selectFirst("img")
+                    
+                    val rawImage = imgEl?.attr("data-src") ?: imgEl?.attr("src")
+                    val image = rawImage?.let { raw ->
+                        if (raw.startsWith("http")) {
+                            raw
+                        } else if (raw.startsWith("/")) {
+                            "$mainUrl$raw"
+                        } else {
+                            "$mainUrl/$raw"
+                        }
+                    }
+                    
+                    val rawRecUrl = element.selectFirst("a")?.attr("href") ?: return@mapNotNull null
+                    val recUrl = if (rawRecUrl.startsWith("http")) {
+                        rawRecUrl
+                    } else if (rawRecUrl.startsWith("/")) {
+                        "$mainUrl$rawRecUrl"
+                    } else {
+                        "$mainUrl/$rawRecUrl"
+                    }
                     
                     newMovieSearchResponse(recTitle, recUrl) {
                         this.posterUrl = image
@@ -315,15 +456,24 @@ class CuevanaProvider : MainAPI() {
         callback: (ExtractorLink) -> Unit
     ): Boolean {
         try {
-            val doc = app.get(data, timeout = 120).document
+            val doc = app.get(data, 
+                timeout = 120,
+                headers = mapOf(
+                    "User-Agent" to "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36"
+                )
+            ).document
             
-            // Try multiple iframe selectors
+            // Enhanced iframe selectors
             val iframeSelectors = listOf(
                 "div.TPlayer.embed_div iframe",
                 ".player iframe",
+                "iframe[data-src]",
+                "iframe[src]",
                 "iframe",
                 ".video-player iframe",
-                "[data-src*='http']"
+                "[data-src*='http']",
+                ".embed iframe",
+                "#player iframe"
             )
             
             var iframes: org.jsoup.select.Elements? = null
@@ -333,12 +483,36 @@ class CuevanaProvider : MainAPI() {
                 if (iframes.isNotEmpty()) break
             }
             
+            if (iframes == null || iframes.isEmpty()) {
+                // Try to find embedded player buttons or links
+                val playerButtons = doc.select("button[data-src], a[data-src], .player-option")
+                playerButtons.forEach { button ->
+                    val buttonUrl = button.attr("data-src")
+                    if (buttonUrl.isNotEmpty()) {
+                        val fullUrl = if (buttonUrl.startsWith("http")) {
+                            buttonUrl
+                        } else if (buttonUrl.startsWith("/")) {
+                            "$mainUrl$buttonUrl"
+                        } else {
+                            "$mainUrl/$buttonUrl"
+                        }
+                        loadExtractor(fullUrl, data, subtitleCallback, callback)
+                    }
+                }
+            }
+            
             iframes?.apmap { iframe ->
-                val iframeUrl = iframe.attr("data-src").takeIf { it.isNotEmpty() }
+                val rawIframeUrl = iframe.attr("data-src").takeIf { it.isNotEmpty() }
                     ?: iframe.attr("src").takeIf { it.isNotEmpty() }
                     ?: return@apmap
                 
-                val fullIframeUrl = fixUrl(iframeUrl)
+                val fullIframeUrl = if (rawIframeUrl.startsWith("http")) {
+                    rawIframeUrl
+                } else if (rawIframeUrl.startsWith("/")) {
+                    "$mainUrl$rawIframeUrl"
+                } else {
+                    "$mainUrl/$rawIframeUrl"
+                }
                 
                 // Handle Cuevana specific embeds
                 if (fullIframeUrl.contains("cuevana") && fullIframeUrl.contains("fembed")) {
@@ -349,7 +523,11 @@ class CuevanaProvider : MainAPI() {
                         val key = fem.substringAfter("?h=")
                         val baseUrl = fem.substringBefore("/fembed")
                         val apiUrl = "$baseUrl/fembed/api.php"
-                        val host = baseUrl.substringAfter("://").substringBefore("/")
+                        val host = try {
+                            baseUrl.substringAfter("://").substringBefore("/")
+                        } catch (e: Exception) {
+                            "cuevana.pro"
+                        }
                         
                         try {
                             val response = app.post(
@@ -357,7 +535,7 @@ class CuevanaProvider : MainAPI() {
                                 allowRedirects = false,
                                 headers = mapOf(
                                     "Host" to host,
-                                    "User-Agent" to USER_AGENT,
+                                    "User-Agent" to "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36",
                                     "Accept" to "application/json, text/javascript, */*; q=0.01",
                                     "Accept-Language" to "en-US,en;q=0.5",
                                     "Content-Type" to "application/x-www-form-urlencoded; charset=UTF-8",
@@ -365,12 +543,13 @@ class CuevanaProvider : MainAPI() {
                                     "Origin" to baseUrl,
                                     "DNT" to "1",
                                     "Connection" to "keep-alive",
+                                    "Referer" to data
                                 ),
                                 data = mapOf("h" to key)
                             ).text
                             val json = parseJson<Femcuevana>(response)
                             val link = json.url
-                            if (link.contains("fembed")) {
+                            if (link.contains("fembed") || link.startsWith("http")) {
                                 loadExtractor(link, data, subtitleCallback, callback)
                             }
                         } catch (e: Exception) {
