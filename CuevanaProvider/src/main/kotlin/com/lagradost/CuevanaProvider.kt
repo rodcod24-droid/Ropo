@@ -6,9 +6,6 @@ import com.lagradost.cloudstream3.mvvm.logError
 import com.lagradost.cloudstream3.utils.AppUtils.parseJson
 import com.lagradost.cloudstream3.utils.ExtractorLink
 import com.lagradost.cloudstream3.utils.loadExtractor
-import kotlinx.coroutines.async
-import kotlinx.coroutines.awaitAll
-import kotlinx.coroutines.coroutineScope
 
 class CuevanaProvider : MainAPI() {
     override var mainUrl = "https://w3vn.cuevana.pro"
@@ -248,129 +245,119 @@ class CuevanaProvider : MainAPI() {
         isCasting: Boolean,
         subtitleCallback: (SubtitleFile) -> Unit,
         callback: (ExtractorLink) -> Unit
-    ): Boolean = coroutineScope {
-        try {
+    ): Boolean {
+        return try {
             val doc = app.get(data, timeout = 120, headers = mapOf("User-Agent" to userAgent)).document
-            
-            val tasks = mutableListOf<kotlinx.coroutines.Deferred<Unit>>()
             
             // Method 1: Look for player options with data-tplayernv attribute
             doc.select("[data-tplayernv], .TPlayerNv").forEach { option ->
-                tasks.add(async {
-                    try {
-                        val optionValue = option.attr("data-tplayernv")
-                        if (optionValue.isNotEmpty()) {
-                            val playerUrl = "$mainUrl/wp-json/dooplayer/v1/$optionValue"
+                try {
+                    val optionValue = option.attr("data-tplayernv")
+                    if (optionValue.isNotEmpty()) {
+                        val playerUrl = "$mainUrl/wp-json/dooplayer/v1/$optionValue"
+                        try {
+                            val playerResponse = app.get(playerUrl, headers = mapOf("User-Agent" to userAgent))
+                            val playerData = parseJson<PlayerResponse>(playerResponse.text)
+                            if (playerData.embed_url.isNotEmpty()) {
+                                loadExtractor(playerData.embed_url, data, subtitleCallback, callback)
+                            }
+                        } catch (parseException: Exception) {
+                            val playerDoc = app.get(playerUrl, headers = mapOf("User-Agent" to userAgent)).document
+                            val iframe = playerDoc.selectFirst("iframe")
+                            if (iframe != null) {
+                                val iframeSrc = iframe.attr("src")
+                                if (iframeSrc.startsWith("http")) {
+                                    loadExtractor(iframeSrc, data, subtitleCallback, callback)
+                                }
+                            }
+                        }
+                    }
+                } catch (e: Exception) {
+                    // Continue
+                }
+            }
+            
+            // Method 2: Look for dooplay player options
+            doc.select(".dooplay_player_option, [data-option]").forEach { option ->
+                try {
+                    val optionUrl = option.attr("data-option")
+                    if (optionUrl.startsWith("http")) {
+                        loadExtractor(optionUrl, data, subtitleCallback, callback)
+                    } else if (optionUrl.isNotEmpty()) {
+                        val playerEndpoints = listOf(
+                            "$mainUrl/wp-json/dooplayer/v2/$optionUrl",
+                            "$mainUrl/wp-json/dooplayer/v1/$optionUrl"
+                        )
+                        
+                        for (playerUrl in playerEndpoints) {
                             try {
                                 val playerResponse = app.get(playerUrl, headers = mapOf("User-Agent" to userAgent))
                                 val playerData = parseJson<PlayerResponse>(playerResponse.text)
                                 if (playerData.embed_url.isNotEmpty()) {
                                     loadExtractor(playerData.embed_url, data, subtitleCallback, callback)
+                                    break
                                 }
                             } catch (parseException: Exception) {
-                                val playerDoc = app.get(playerUrl, headers = mapOf("User-Agent" to userAgent)).document
-                                val iframe = playerDoc.selectFirst("iframe")
-                                if (iframe != null) {
-                                    val iframeSrc = iframe.attr("src")
-                                    if (iframeSrc.startsWith("http")) {
-                                        loadExtractor(iframeSrc, data, subtitleCallback, callback)
-                                    }
-                                }
-                            }
-                        }
-                    } catch (e: Exception) {
-                        // Continue processing other options
-                    }
-                })
-            }
-            
-            // Method 2: Look for dooplay player options
-            doc.select(".dooplay_player_option, [data-option]").forEach { option ->
-                tasks.add(async {
-                    try {
-                        val optionUrl = option.attr("data-option")
-                        if (optionUrl.startsWith("http")) {
-                            loadExtractor(optionUrl, data, subtitleCallback, callback)
-                        } else if (optionUrl.isNotEmpty()) {
-                            val playerEndpoints = listOf(
-                                "$mainUrl/wp-json/dooplayer/v2/$optionUrl",
-                                "$mainUrl/wp-json/dooplayer/v1/$optionUrl"
-                            )
-                            
-                            for (playerUrl in playerEndpoints) {
                                 try {
-                                    val playerResponse = app.get(playerUrl, headers = mapOf("User-Agent" to userAgent))
-                                    val playerData = parseJson<PlayerResponse>(playerResponse.text)
-                                    if (playerData.embed_url.isNotEmpty()) {
-                                        loadExtractor(playerData.embed_url, data, subtitleCallback, callback)
-                                        break
-                                    }
-                                } catch (parseException: Exception) {
-                                    try {
-                                        val playerDoc = app.get(playerUrl, headers = mapOf("User-Agent" to userAgent)).document
-                                        val iframe = playerDoc.selectFirst("iframe")
-                                        if (iframe != null) {
-                                            val iframeSrc = iframe.attr("src")
-                                            if (iframeSrc.startsWith("http")) {
-                                                loadExtractor(iframeSrc, data, subtitleCallback, callback)
-                                                break
-                                            }
+                                    val playerDoc = app.get(playerUrl, headers = mapOf("User-Agent" to userAgent)).document
+                                    val iframe = playerDoc.selectFirst("iframe")
+                                    if (iframe != null) {
+                                        val iframeSrc = iframe.attr("src")
+                                        if (iframeSrc.startsWith("http")) {
+                                            loadExtractor(iframeSrc, data, subtitleCallback, callback)
+                                            break
                                         }
-                                    } catch (htmlException: Exception) {
-                                        continue
                                     }
+                                } catch (htmlException: Exception) {
+                                    continue
                                 }
                             }
                         }
-                    } catch (e: Exception) {
-                        // Continue processing other options
                     }
-                })
+                } catch (e: Exception) {
+                    // Continue
+                }
             }
             
             // Method 3: Direct iframes
             doc.select("iframe").forEach { iframe ->
-                tasks.add(async {
-                    try {
-                        val iframeUrl = iframe.attr("data-src").takeIf { it.isNotEmpty() }
-                            ?: iframe.attr("src").takeIf { it.isNotEmpty() }
-                            ?: return@async
-                        
+                try {
+                    val iframeUrl = iframe.attr("data-src").takeIf { it.isNotEmpty() }
+                        ?: iframe.attr("src").takeIf { it.isNotEmpty() }
+                    
+                    if (iframeUrl != null) {
                         val fullUrl = if (iframeUrl.startsWith("http")) iframeUrl else "$mainUrl$iframeUrl"
                         loadExtractor(fullUrl, data, subtitleCallback, callback)
-                    } catch (e: Exception) {
-                        // Continue processing other iframes
                     }
-                })
+                } catch (e: Exception) {
+                    // Continue
+                }
             }
             
             // Method 4: Script analysis for embedded URLs
             doc.select("script").forEach { script ->
-                tasks.add(async {
-                    try {
-                        val scriptContent = script.data()
-                        if (scriptContent.contains("http")) {
-                            val patterns = listOf(
-                                Regex("(?:\"|\')([^\"\']*(?:fembed|embedsb|streamtape|doodstream|uqload|mixdrop|upstream|voe|streamwish|filemoon)[^\"\']*?)(?:\"|\')", RegexOption.IGNORE_CASE),
-                                Regex("file\\s*:\\s*[\"']([^\"']+\\.(?:mp4|m3u8))[\"']")
-                            )
-                            
-                            patterns.forEach { pattern ->
-                                pattern.findAll(scriptContent).forEach { match ->
-                                    val url = match.groupValues[1]
-                                    if (url.startsWith("http") && !url.contains("facebook") && !url.contains("twitter") && !url.contains("google")) {
-                                        loadExtractor(url, data, subtitleCallback, callback)
-                                    }
+                try {
+                    val scriptContent = script.data()
+                    if (scriptContent.contains("http")) {
+                        val patterns = listOf(
+                            Regex("(?:\"|\')([^\"\']*(?:fembed|embedsb|streamtape|doodstream|uqload|mixdrop|upstream|voe|streamwish|filemoon)[^\"\']*?)(?:\"|\')", RegexOption.IGNORE_CASE),
+                            Regex("file\\s*:\\s*[\"']([^\"']+\\.(?:mp4|m3u8))[\"']")
+                        )
+                        
+                        patterns.forEach { pattern ->
+                            pattern.findAll(scriptContent).forEach { match ->
+                                val url = match.groupValues[1]
+                                if (url.startsWith("http") && !url.contains("facebook") && !url.contains("twitter") && !url.contains("google")) {
+                                    loadExtractor(url, data, subtitleCallback, callback)
                                 }
                             }
                         }
-                    } catch (e: Exception) {
-                        // Continue processing other scripts
                     }
-                })
+                } catch (e: Exception) {
+                    // Continue
+                }
             }
             
-            tasks.awaitAll()
             true
         } catch (e: Exception) {
             logError(e)
