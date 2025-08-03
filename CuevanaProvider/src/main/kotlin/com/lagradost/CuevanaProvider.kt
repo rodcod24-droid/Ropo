@@ -11,7 +11,7 @@ import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
 
 class CuevanaProvider : MainAPI() {
-    override var mainUrl = "https://cuevana3.me"
+    override var mainUrl = "https://cuevana.pro"
     override var name = "Cuevana"
     override var lang = "es"
     override val hasMainPage = true
@@ -40,7 +40,7 @@ class CuevanaProvider : MainAPI() {
                             title,
                             url,
                             this.name,
-                            TvType.Anime,
+                            TvType.TvSeries,
                             poster,
                             null,
                             null,
@@ -201,24 +201,28 @@ class CuevanaProvider : MainAPI() {
     ): Boolean {
         app.get(data).document.select("div.TPlayer.embed_div iframe").apmap {
             val iframe = fixUrl(it.attr("data-src"))
-            if (iframe.contains("api.cuevana3.me/fembed/")) {
+            if (iframe.contains("api.cuevana3.me/fembed/") || iframe.contains("cuevana.pro/fembed/")) {
                 val femregex =
-                    Regex("(https.\\/\\/api\\.cuevana3\\.me\\/fembed\\/\\?h=[a-zA-Z0-9]{0,8}[a-zA-Z0-9_-]+)")
+                    Regex("(https.\\/\\/(api\\.cuevana3\\.me|cuevana\\.pro)\\/fembed\\/\\?h=[a-zA-Z0-9]{0,8}[a-zA-Z0-9_-]+)")
                 femregex.findAll(iframe).map { femreg ->
                     femreg.value
                 }.toList().apmap { fem ->
-                    val key = fem.replace("https://api.cuevana3.me/fembed/?h=", "")
+                    val key = fem.replace(Regex("https://(api\\.cuevana3\\.me|cuevana\\.pro)/fembed/\\?h="), "")
+                    val apiUrl = if (fem.contains("cuevana.pro")) "https://cuevana.pro/fembed/api.php" else "https://api.cuevana3.me/fembed/api.php"
+                    val hostHeader = if (fem.contains("cuevana.pro")) "cuevana.pro" else "api.cuevana3.me"
+                    val originHeader = if (fem.contains("cuevana.pro")) "https://cuevana.pro" else "https://api.cuevana3.me"
+                    
                     val url = app.post(
-                        "https://api.cuevana3.me/fembed/api.php",
+                        apiUrl,
                         allowRedirects = false,
                         headers = mapOf(
-                            "Host" to "api.cuevana3.me",
+                            "Host" to hostHeader,
                             "User-Agent" to USER_AGENT,
                             "Accept" to "application/json, text/javascript, */*; q=0.01",
                             "Accept-Language" to "en-US,en;q=0.5",
                             "Content-Type" to "application/x-www-form-urlencoded; charset=UTF-8",
                             "X-Requested-With" to "XMLHttpRequest",
-                            "Origin" to "https://api.cuevana3.me",
+                            "Origin" to originHeader,
                             "DNT" to "1",
                             "Connection" to "keep-alive",
                             "Sec-Fetch-Dest" to "empty",
@@ -261,15 +265,18 @@ class CuevanaProvider : MainAPI() {
                     ).okhttpResponse.headers.values("location").apmap { loc ->
                         if (loc.contains("goto_ddh.php")) {
                             val gotoregex =
-                                Regex("(\\/\\/api.cuevana3.me\\/ir\\/goto_ddh.php\\?h=[a-zA-Z0-9]{0,8}[a-zA-Z0-9_-]+)")
+                                Regex("(\\/\\/(api.cuevana3.me|cuevana.pro)\\/ir\\/goto_ddh.php\\?h=[a-zA-Z0-9]{0,8}[a-zA-Z0-9_-]+)")
                             gotoregex.findAll(loc).map { goreg ->
-                                goreg.value.replace("//api.cuevana3.me/ir/goto_ddh.php?h=", "")
+                                goreg.value.replace(Regex("//(?:api\\.cuevana3\\.me|cuevana\\.pro)/ir/goto_ddh\\.php\\?h="), "")
                             }.toList().apmap { gotolink ->
+                                val redirectUrl = if (loc.contains("cuevana.pro")) "https://cuevana.pro/ir/redirect_ddh.php" else "https://api.cuevana3.me/ir/redirect_ddh.php"
+                                val hostHeader = if (loc.contains("cuevana.pro")) "cuevana.pro" else "api.cuevana3.me"
+                                
                                 app.post(
-                                    "https://api.cuevana3.me/ir/redirect_ddh.php",
+                                    redirectUrl,
                                     allowRedirects = false,
                                     headers = mapOf(
-                                        "Host" to "api.cuevana3.me",
+                                        "Host" to hostHeader,
                                         "User-Agent" to USER_AGENT,
                                         "Accept" to "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
                                         "Accept-Language" to "en-US,en;q=0.5",
@@ -290,14 +297,17 @@ class CuevanaProvider : MainAPI() {
                         }
                         if (loc.contains("index.php?h=")) {
                             val indexRegex =
-                                Regex("(\\/\\/api.cuevana3.me\\/sc\\/index.php\\?h=[a-zA-Z0-9]{0,8}[a-zA-Z0-9_-]+)")
+                                Regex("(\\/\\/(api.cuevana3.me|cuevana.pro)\\/sc\\/index.php\\?h=[a-zA-Z0-9]{0,8}[a-zA-Z0-9_-]+)")
                             indexRegex.findAll(loc).map { indreg ->
-                                indreg.value.replace("//api.cuevana3.me/sc/index.php?h=", "")
+                                indreg.value.replace(Regex("//(?:api\\.cuevana3\\.me|cuevana\\.pro)/sc/index\\.php\\?h="), "")
                             }.toList().apmap { inlink ->
+                                val scUrl = if (loc.contains("cuevana.pro")) "https://cuevana.pro/sc/r.php" else "https://api.cuevana3.me/sc/r.php"
+                                val hostHeader = if (loc.contains("cuevana.pro")) "cuevana.pro" else "api.cuevana3.me"
+                                
                                 app.post(
-                                    "https://api.cuevana3.me/sc/r.php", allowRedirects = false,
+                                    scUrl, allowRedirects = false,
                                     headers = mapOf(
-                                        "Host" to "api.cuevana3.me",
+                                        "Host" to hostHeader,
                                         "User-Agent" to USER_AGENT,
                                         "Accept" to "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
                                         "Accept-Language" to "en-US,en;q=0.5",
