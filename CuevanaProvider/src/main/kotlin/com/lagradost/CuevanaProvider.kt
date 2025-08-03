@@ -249,18 +249,17 @@ class CuevanaProvider : MainAPI() {
         subtitleCallback: (SubtitleFile) -> Unit,
         callback: (ExtractorLink) -> Unit
     ): Boolean = coroutineScope {
-        return@coroutineScope try {
+        try {
             val doc = app.get(data, timeout = 120, headers = mapOf("User-Agent" to userAgent)).document
             
             val tasks = mutableListOf<kotlinx.coroutines.Deferred<Unit>>()
             
-            // Method 1: Look for player options with data-tplayernv attribute (common in Cuevana sites)
+            // Method 1: Look for player options with data-tplayernv attribute
             doc.select("[data-tplayernv], .TPlayerNv").forEach { option ->
                 tasks.add(async {
                     try {
                         val optionValue = option.attr("data-tplayernv")
                         if (optionValue.isNotEmpty()) {
-                            // Get the actual video URL from the player endpoint
                             val playerUrl = "$mainUrl/wp-json/dooplayer/v1/$optionValue"
                             try {
                                 val playerResponse = app.get(playerUrl, headers = mapOf("User-Agent" to userAgent))
@@ -269,8 +268,6 @@ class CuevanaProvider : MainAPI() {
                                     loadExtractor(playerData.embed_url, data, subtitleCallback, callback)
                                 }
                             } catch (parseException: Exception) {
-                                logError(parseException)
-                                // If JSON parsing fails, try to extract from HTML
                                 val playerDoc = app.get(playerUrl, headers = mapOf("User-Agent" to userAgent)).document
                                 val iframe = playerDoc.selectFirst("iframe")
                                 if (iframe != null) {
@@ -282,12 +279,12 @@ class CuevanaProvider : MainAPI() {
                             }
                         }
                     } catch (e: Exception) {
-                        logError(e)
+                        // Continue processing other options
                     }
                 })
             }
             
-            // Method 2: Look for dooplay player options (common WordPress video theme)
+            // Method 2: Look for dooplay player options
             doc.select(".dooplay_player_option, [data-option]").forEach { option ->
                 tasks.add(async {
                     try {
@@ -295,7 +292,6 @@ class CuevanaProvider : MainAPI() {
                         if (optionUrl.startsWith("http")) {
                             loadExtractor(optionUrl, data, subtitleCallback, callback)
                         } else if (optionUrl.isNotEmpty()) {
-                            // Try to get player data
                             val playerEndpoints = listOf(
                                 "$mainUrl/wp-json/dooplayer/v2/$optionUrl",
                                 "$mainUrl/wp-json/dooplayer/v1/$optionUrl"
@@ -310,7 +306,6 @@ class CuevanaProvider : MainAPI() {
                                         break
                                     }
                                 } catch (parseException: Exception) {
-                                    // If JSON parsing fails, try as HTML
                                     try {
                                         val playerDoc = app.get(playerUrl, headers = mapOf("User-Agent" to userAgent)).document
                                         val iframe = playerDoc.selectFirst("iframe")
@@ -328,53 +323,12 @@ class CuevanaProvider : MainAPI() {
                             }
                         }
                     } catch (e: Exception) {
-                        logError(e)
+                        // Continue processing other options
                     }
                 })
             }
             
-            // Method 3: Look for server tabs/buttons
-            doc.select("[data-server], .server-item, .TPlayerNv li").forEach { server ->
-                tasks.add(async {
-                    try {
-                        val serverUrl = server.attr("data-server").takeIf { it.isNotEmpty() }
-                            ?: server.attr("data-tplayernv").takeIf { it.isNotEmpty() }
-                            ?: return@async
-                            
-                        if (serverUrl.startsWith("http")) {
-                            loadExtractor(serverUrl, data, subtitleCallback, callback)
-                        } else {
-                            // Get server data
-                            val playerUrl = "$mainUrl/wp-json/dooplayer/v1/$serverUrl"
-                            try {
-                                val playerResponse = app.get(playerUrl, headers = mapOf("User-Agent" to userAgent))
-                                val playerData = parseJson<PlayerResponse>(playerResponse.text)
-                                if (playerData.embed_url.isNotEmpty()) {
-                                    loadExtractor(playerData.embed_url, data, subtitleCallback, callback)
-                                }
-                            } catch (parseException: Exception) {
-                                // Try as HTML if JSON fails
-                                try {
-                                    val playerDoc = app.get(playerUrl, headers = mapOf("User-Agent" to userAgent)).document
-                                    val iframe = playerDoc.selectFirst("iframe")
-                                    if (iframe != null) {
-                                        val iframeSrc = iframe.attr("src")
-                                        if (iframeSrc.startsWith("http")) {
-                                            loadExtractor(iframeSrc, data, subtitleCallback, callback)
-                                        }
-                                    }
-                                } catch (htmlException: Exception) {
-                                    // Continue if this fails too
-                                }
-                            }
-                        }
-                    } catch (e: Exception) {
-                        logError(e)
-                    }
-                })
-            }
-            
-            // Method 4: Direct iframes
+            // Method 3: Direct iframes
             doc.select("iframe").forEach { iframe ->
                 tasks.add(async {
                     try {
@@ -385,23 +339,20 @@ class CuevanaProvider : MainAPI() {
                         val fullUrl = if (iframeUrl.startsWith("http")) iframeUrl else "$mainUrl$iframeUrl"
                         loadExtractor(fullUrl, data, subtitleCallback, callback)
                     } catch (e: Exception) {
-                        logError(e)
+                        // Continue processing other iframes
                     }
                 })
             }
             
-            // Method 5: Script analysis for embedded URLs
+            // Method 4: Script analysis for embedded URLs
             doc.select("script").forEach { script ->
                 tasks.add(async {
                     try {
                         val scriptContent = script.data()
                         if (scriptContent.contains("http")) {
-                            // Look for video hosting patterns
                             val patterns = listOf(
-                                Regex("(?:embed_url|url|src)\\s*[:\\=\"']\\s*([^\"'\\s]+(?:fembed|embedsb|streamtape|doodstream|uqload|mixdrop|upstream|voe|streamwish|filemoon)[^\"'\\s]*)", RegexOption.IGNORE_CASE),
                                 Regex("(?:\"|\')([^\"\']*(?:fembed|embedsb|streamtape|doodstream|uqload|mixdrop|upstream|voe|streamwish|filemoon)[^\"\']*?)(?:\"|\')", RegexOption.IGNORE_CASE),
-                                Regex("file\\s*:\\s*[\"']([^\"']+\\.(?:mp4|m3u8))[\"']"),
-                                Regex("src\\s*:\\s*[\"']([^\"']+)[\"']")
+                                Regex("file\\s*:\\s*[\"']([^\"']+\\.(?:mp4|m3u8))[\"']")
                             )
                             
                             patterns.forEach { pattern ->
@@ -414,7 +365,7 @@ class CuevanaProvider : MainAPI() {
                             }
                         }
                     } catch (e: Exception) {
-                        logError(e)
+                        // Continue processing other scripts
                     }
                 })
             }
