@@ -478,7 +478,7 @@ class CuevanaProvider : MainAPI() {
                     if (videoUrl.startsWith("http") && (videoUrl.contains(".mp4") || videoUrl.contains(".m3u8"))) {
                         callback.invoke(
                             ExtractorLink(
-                                "Cuevana",
+                                videoUrl,
                                 "Cuevana Direct",
                                 videoUrl,
                                 data,
@@ -503,8 +503,8 @@ class CuevanaProvider : MainAPI() {
                         if (videoUrl.startsWith("http")) {
                             callback.invoke(
                                 ExtractorLink(
-                                    "Cuevana",
-                                    "Cuevana Video",
+                                    videoUrl,
+                                    "Cuevana Video", 
                                     videoUrl,
                                     data,
                                     Qualities.Unknown.value,
@@ -698,7 +698,7 @@ class CuevanaProvider : MainAPI() {
                                 if (videoUrl.startsWith("http")) {
                                     callback.invoke(
                                         ExtractorLink(
-                                            "Cuevana",
+                                            videoUrl,
                                             "Cuevana AJAX",
                                             videoUrl,
                                             data,
