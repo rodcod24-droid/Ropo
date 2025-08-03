@@ -11,7 +11,7 @@ import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
 
 class CuevanaProvider : MainAPI() {
-    override var mainUrl = "https://cuevana.pro"
+    override var mainUrl = "https://w3vn.cuevana.pro"
     override var name = "Cuevana"
     override var lang = "es"
     override val hasMainPage = true
@@ -24,41 +24,100 @@ class CuevanaProvider : MainAPI() {
 
     override suspend fun getMainPage(page: Int, request : MainPageRequest): HomePageResponse {
         val items = ArrayList<HomePageList>()
-        val urls = listOf(
-            Pair(mainUrl, "Recientemente actualizadas"),
-            Pair("$mainUrl/estrenos/", "Estrenos"),
+        
+        // Try to get different sections
+        val sections = listOf(
+            Triple("$mainUrl/serie", "Series", "series"),
+            Triple("$mainUrl/peliculas", "Películas", "movies"),
+            Triple("$mainUrl/estrenos", "Estrenos", "releases"),
+            Triple(mainUrl, "Recientes", "recent")
         )
-        items.add(
-            HomePageList(
-                "Series",
-                app.get("$mainUrl/serie", timeout = 120).document.select("section.home-series li")
-                    .map {
-                        val title = it.selectFirst("h2.Title")!!.text()
-                        val poster = it.selectFirst("img.lazy")!!.attr("data-src")
-                        val url = it.selectFirst("a")!!.attr("href")
-                        newTvSeriesSearchResponse(title, url) {
-                            this.posterUrl = poster
-                        }
-                    })
-        )
-        for ((url, name) in urls) {
+        
+        for ((url, sectionName, sectionType) in sections) {
             try {
-                val soup = app.get(url).document
-                val home = soup.select("section li.xxx.TPostMv").map {
-                    val title = it.selectFirst("h2.Title")!!.text()
-                    val link = it.selectFirst("a")!!.attr("href")
-                    if (link.contains("/pelicula/")) {
-                        newMovieSearchResponse(title, link) {
-                            this.posterUrl = it.selectFirst("img.lazy")!!.attr("data-src")
-                        }
-                    } else {
-                        newTvSeriesSearchResponse(title, link) {
-                            this.posterUrl = it.selectFirst("img.lazy")!!.attr("data-src")
-                        }
+                val doc = app.get(url, timeout = 120).document
+                
+                // Try multiple possible selectors for content items
+                val possibleSelectors = listOf(
+                    "section.home-series li",                    // Original selector for series
+                    "section li.xxx.TPostMv",                   // Original selector for movies
+                    "li.xxx.TPostMv",                           // Without section
+                    "article.TPost",                            // Common article format
+                    "div.TPost",                                // Div format
+                    ".MovieList article",                       // MovieList container
+                    ".item.movies",                             // Item movies
+                    "div.item",                                 // Generic item
+                    ".movie-item",                              // Movie item
+                    ".serie-item",                              // Serie item
+                    "article",                                  // Generic articles
+                    ".post-item",                               // Post items
+                    ".content-item",                            // Content items
+                    "[class*='movie']",                         // Any class containing 'movie'
+                    "[class*='serie']",                         // Any class containing 'serie'
+                    "[class*='post']"                           // Any class containing 'post'
+                )
+                
+                var elements: org.jsoup.select.Elements? = null
+                var usedSelector = ""
+                
+                for (selector in possibleSelectors) {
+                    elements = doc.select(selector)
+                    if (elements.isNotEmpty()) {
+                        usedSelector = selector
+                        break
                     }
                 }
-
-                items.add(HomePageList(name, home))
+                
+                if (elements != null && elements.isNotEmpty()) {
+                    val homeItems = elements.mapNotNull { element ->
+                        try {
+                            // Try multiple title selectors
+                            val title = element.selectFirst("h2.Title")?.text()?.trim()
+                                ?: element.selectFirst("h2")?.text()?.trim()
+                                ?: element.selectFirst("h3")?.text()?.trim()
+                                ?: element.selectFirst(".title")?.text()?.trim()
+                                ?: element.selectFirst(".movie-title")?.text()?.trim()
+                                ?: element.selectFirst("a")?.attr("title")?.trim()
+                                ?: return@mapNotNull null
+                            
+                            val link = element.selectFirst("a")?.attr("href") ?: return@mapNotNull null
+                            
+                            // Try multiple image selectors
+                            val poster = element.selectFirst("img.lazy")?.attr("data-src")
+                                ?: element.selectFirst("img")?.attr("data-src")
+                                ?: element.selectFirst("img")?.attr("src")
+                                ?: element.selectFirst("img")?.attr("data-lazy-src")
+                                ?: return@mapNotNull null
+                            
+                            // Determine type based on URL or section
+                            when {
+                                link.contains("/pelicula/") || sectionType == "movies" -> {
+                                    newMovieSearchResponse(title, link) {
+                                        this.posterUrl = poster
+                                    }
+                                }
+                                link.contains("/serie/") || sectionType == "series" -> {
+                                    newTvSeriesSearchResponse(title, link) {
+                                        this.posterUrl = poster
+                                    }
+                                }
+                                else -> {
+                                    // Default to movie if unclear
+                                    newMovieSearchResponse(title, link) {
+                                        this.posterUrl = poster
+                                    }
+                                }
+                            }
+                        } catch (e: Exception) {
+                            logError(e)
+                            null
+                        }
+                    }
+                    
+                    if (homeItems.isNotEmpty()) {
+                        items.add(HomePageList(sectionName, homeItems))
+                    }
+                }
             } catch (e: Exception) {
                 logError(e)
             }
@@ -69,90 +128,179 @@ class CuevanaProvider : MainAPI() {
     }
 
     override suspend fun search(query: String): List<SearchResponse> {
-        val url = "$mainUrl/?s=${query}"
-        val document = app.get(url).document
+        val searchUrl = "$mainUrl/?s=${query}"
+        val document = app.get(searchUrl, timeout = 120).document
 
-        return document.select("li.xxx.TPostMv").map {
-            val title = it.selectFirst("h2.Title")!!.text()
-            val href = it.selectFirst("a")!!.attr("href")
-            val image = it.selectFirst("img.lazy")!!.attr("data-src")
-            val isSerie = href.contains("/serie/")
-
-            if (isSerie) {
-                newTvSeriesSearchResponse(title, href) {
-                    this.posterUrl = image
-                }
-            } else {
-                newMovieSearchResponse(title, href) {
-                    this.posterUrl = image
-                }
-            }
+        // Try multiple selectors for search results
+        val possibleSelectors = listOf(
+            "li.xxx.TPostMv",
+            "article.TPost", 
+            "div.TPost",
+            ".MovieList article",
+            ".item.movies",
+            "div.item",
+            "article",
+            ".search-result",
+            ".post-item"
+        )
+        
+        var elements: org.jsoup.select.Elements? = null
+        
+        for (selector in possibleSelectors) {
+            elements = document.select(selector)
+            if (elements.isNotEmpty()) break
         }
+        
+        return elements?.mapNotNull { element ->
+            try {
+                val title = element.selectFirst("h2.Title")?.text()?.trim()
+                    ?: element.selectFirst("h2")?.text()?.trim()
+                    ?: element.selectFirst("h3")?.text()?.trim()
+                    ?: element.selectFirst(".title")?.text()?.trim()
+                    ?: return@mapNotNull null
+                
+                val href = element.selectFirst("a")?.attr("href") ?: return@mapNotNull null
+                
+                val image = element.selectFirst("img.lazy")?.attr("data-src")
+                    ?: element.selectFirst("img")?.attr("data-src")
+                    ?: element.selectFirst("img")?.attr("src")
+                    ?: return@mapNotNull null
+                
+                val isSerie = href.contains("/serie/")
+
+                if (isSerie) {
+                    newTvSeriesSearchResponse(title, href) {
+                        this.posterUrl = image
+                    }
+                } else {
+                    newMovieSearchResponse(title, href) {
+                        this.posterUrl = image
+                    }
+                }
+            } catch (e: Exception) {
+                logError(e)
+                null
+            }
+        } ?: emptyList()
     }
 
     override suspend fun load(url: String): LoadResponse? {
-        val soup = app.get(url, timeout = 120).document
-        val title = soup.selectFirst("h1.Title")!!.text()
-        val description = soup.selectFirst(".Description p")?.text()?.trim()
-        val poster: String? = soup.selectFirst(".movtv-info div.Image img")!!.attr("data-src")
-        val year1 = soup.selectFirst("footer p.meta").toString()
-        val yearRegex = Regex("<span>(\\d+)</span>")
-        val yearf =
-            yearRegex.find(year1)?.destructured?.component1()?.replace(Regex("<span>|</span>"), "")
-        val year = if (yearf.isNullOrBlank()) null else yearf.toIntOrNull()
-        val episodes = soup.select(".all-episodes li.TPostMv article").map { li ->
-            val href = li.select("a").attr("href")
-            val epThumb =
-                li.selectFirst("div.Image img")?.attr("data-src") ?: li.selectFirst("img.lazy")!!
-                    .attr("data-srcc")
-            val seasonid = li.selectFirst("span.Year")!!.text().let { str ->
-                str.split("x").mapNotNull { subStr -> subStr.toIntOrNull() }
-            }
-            val isValid = seasonid.size == 2
-            val episode = if (isValid) seasonid.getOrNull(1) else null
-            val season = if (isValid) seasonid.getOrNull(0) else null
-            newEpisode(href) {
-                this.name = null
-                this.season = season
-                this.episode = episode
-                this.posterUrl = fixUrl(epThumb)
-            }
-        }
-        val tags = soup.select("ul.InfoList li.AAIco-adjust:contains(Genero) a").map { it.text() }
-        val tvType = if (episodes.isEmpty()) TvType.Movie else TvType.TvSeries
-        val recelement =
-            if (tvType == TvType.TvSeries) "main section div.series_listado.series div.xxx"
-            else "main section ul.MovieList li"
-        val recommendations =
-            soup.select(recelement).mapNotNull { element ->
-                val recTitle = element.select("h2.Title").text() ?: return@mapNotNull null
-                val image = element.select("figure img")?.attr("data-src")
-                val recUrl = fixUrl(element.select("a").attr("href"))
-                newMovieSearchResponse(recTitle, recUrl) {
-                    this.posterUrl = image
+        try {
+            val soup = app.get(url, timeout = 120).document
+
+            // Try multiple title selectors
+            val title = soup.selectFirst("h1.Title")?.text()?.trim()
+                ?: soup.selectFirst("h1")?.text()?.trim()
+                ?: soup.selectFirst(".movie-title")?.text()?.trim()
+                ?: soup.selectFirst(".title")?.text()?.trim()
+                ?: return null
+                
+            // Try multiple description selectors
+            val description = soup.selectFirst(".Description p")?.text()?.trim()
+                ?: soup.selectFirst(".synopsis")?.text()?.trim()
+                ?: soup.selectFirst(".overview")?.text()?.trim()
+                ?: soup.selectFirst("p")?.text()?.trim()
+            
+            // Try multiple poster selectors
+            val poster = soup.selectFirst(".movtv-info div.Image img")?.attr("data-src")
+                ?: soup.selectFirst(".poster img")?.attr("data-src")
+                ?: soup.selectFirst("img")?.attr("data-src")
+                ?: soup.selectFirst(".movtv-info div.Image img")?.attr("src")
+                ?: soup.selectFirst(".poster img")?.attr("src")
+                ?: soup.selectFirst("img")?.attr("src")
+            
+            // Extract year
+            val year1 = soup.selectFirst("footer p.meta")?.toString() 
+                ?: soup.selectFirst(".year")?.text()
+                ?: soup.selectFirst(".date")?.text() ?: ""
+            val yearRegex = Regex("(\\d{4})")
+            val year = yearRegex.find(year1)?.value?.toIntOrNull()
+
+            // Try multiple episode selectors
+            val episodes = soup.select(".all-episodes li.TPostMv article, .episodes .episode, .episode-list .episode, li.episode").mapNotNull { li ->
+                try {
+                    val href = li.selectFirst("a")?.attr("href") ?: return@mapNotNull null
+                    
+                    val epThumb = li.selectFirst("div.Image img")?.attr("data-src")
+                        ?: li.selectFirst("img.lazy")?.attr("data-src")
+                        ?: li.selectFirst("img")?.attr("data-src")
+                        ?: li.selectFirst("img")?.attr("src")
+                    
+                    // Try multiple episode number selectors
+                    val seasonEpisodeText = li.selectFirst("span.Year")?.text()
+                        ?: li.selectFirst(".episode-number")?.text()
+                        ?: li.selectFirst(".number")?.text() ?: ""
+                    
+                    val seasonEpisode = seasonEpisodeText.split("x").mapNotNull { it.toIntOrNull() }
+                    val isValid = seasonEpisode.size == 2
+                    val season = if (isValid) seasonEpisode.getOrNull(0) else 1
+                    val episode = if (isValid) seasonEpisode.getOrNull(1) else null
+                    
+                    newEpisode(href) {
+                        this.name = null
+                        this.season = season
+                        this.episode = episode
+                        this.posterUrl = epThumb?.let { fixUrl(it) }
+                    }
+                } catch (e: Exception) {
+                    logError(e)
+                    null
                 }
             }
 
-        return when (tvType) {
-            TvType.TvSeries -> {
-                newTvSeriesLoadResponse(title, url, TvType.TvSeries, episodes) {
-                    this.posterUrl = poster
-                    this.year = year
-                    this.plot = description
-                    this.tags = tags
-                    this.recommendations = recommendations
+            val tags = soup.select("ul.InfoList li.AAIco-adjust:contains(Genero) a, .genres a, .genre a").map { it.text() }
+            val tvType = if (episodes.isEmpty()) TvType.Movie else TvType.TvSeries
+            
+            // Try multiple recommendation selectors
+            val recelement = if (tvType == TvType.TvSeries) 
+                "main section div.series_listado.series div.xxx, .recommendations .item, .related .item"
+            else 
+                "main section ul.MovieList li, .recommendations .item, .related .item"
+                
+            val recommendations = soup.select(recelement).mapNotNull { element ->
+                try {
+                    val recTitle = element.selectFirst("h2.Title")?.text()
+                        ?: element.selectFirst("h3")?.text()
+                        ?: element.selectFirst(".title")?.text()
+                        ?: return@mapNotNull null
+                    val image = element.selectFirst("figure img")?.attr("data-src")
+                        ?: element.selectFirst("img")?.attr("data-src")
+                        ?: element.selectFirst("img")?.attr("src")
+                    val recUrl = fixUrl(element.selectFirst("a")?.attr("href") ?: return@mapNotNull null)
+                    
+                    newMovieSearchResponse(recTitle, recUrl) {
+                        this.posterUrl = image
+                    }
+                } catch (e: Exception) {
+                    logError(e)
+                    null
                 }
             }
-            TvType.Movie -> {
-                newMovieLoadResponse(title, url, TvType.Movie, url) {
-                    this.posterUrl = poster
-                    this.year = year
-                    this.plot = description
-                    this.tags = tags
-                    this.recommendations = recommendations
+
+            return when (tvType) {
+                TvType.TvSeries -> {
+                    newTvSeriesLoadResponse(title, url, TvType.TvSeries, episodes) {
+                        this.posterUrl = poster
+                        this.year = year
+                        this.plot = description
+                        this.tags = tags
+                        this.recommendations = recommendations
+                    }
                 }
+                TvType.Movie -> {
+                    newMovieLoadResponse(title, url, TvType.Movie, url) {
+                        this.posterUrl = poster
+                        this.year = year
+                        this.plot = description
+                        this.tags = tags
+                        this.recommendations = recommendations
+                    }
+                }
+                else -> null
             }
-            else -> null
+        } catch (e: Exception) {
+            logError(e)
+            return null
         }
     }
 
@@ -166,139 +314,78 @@ class CuevanaProvider : MainAPI() {
         subtitleCallback: (SubtitleFile) -> Unit,
         callback: (ExtractorLink) -> Unit
     ): Boolean {
-        app.get(data).document.select("div.TPlayer.embed_div iframe").apmap {
-            val iframe = fixUrl(it.attr("data-src"))
-            if (iframe.contains("api.cuevana3.me/fembed/") || iframe.contains("cuevana.pro/fembed/")) {
-                val femregex =
-                    Regex("(https.\\/\\/(api\\.cuevana3\\.me|cuevana\\.pro)\\/fembed\\/\\?h=[a-zA-Z0-9]{0,8}[a-zA-Z0-9_-]+)")
-                femregex.findAll(iframe).map { femreg ->
-                    femreg.value
-                }.toList().apmap { fem ->
-                    val key = fem.replace(Regex("https://(api\\.cuevana3\\.me|cuevana\\.pro)/fembed/\\?h="), "")
-                    val apiUrl = if (fem.contains("cuevana.pro")) "https://cuevana.pro/fembed/api.php" else "https://api.cuevana3.me/fembed/api.php"
-                    val hostHeader = if (fem.contains("cuevana.pro")) "cuevana.pro" else "api.cuevana3.me"
-                    val originHeader = if (fem.contains("cuevana.pro")) "https://cuevana.pro" else "https://api.cuevana3.me"
-                    
-                    val url = app.post(
-                        apiUrl,
-                        allowRedirects = false,
-                        headers = mapOf(
-                            "Host" to hostHeader,
-                            "User-Agent" to USER_AGENT,
-                            "Accept" to "application/json, text/javascript, */*; q=0.01",
-                            "Accept-Language" to "en-US,en;q=0.5",
-                            "Content-Type" to "application/x-www-form-urlencoded; charset=UTF-8",
-                            "X-Requested-With" to "XMLHttpRequest",
-                            "Origin" to originHeader,
-                            "DNT" to "1",
-                            "Connection" to "keep-alive",
-                            "Sec-Fetch-Dest" to "empty",
-                            "Sec-Fetch-Mode" to "cors",
-                            "Sec-Fetch-Site" to "same-origin",
-                        ),
-                        data = mapOf(Pair("h", key))
-                    ).text
-                    val json = parseJson<Femcuevana>(url)
-                    val link = json.url
-                    if (link.contains("fembed")) {
-                        loadExtractor(link, data, subtitleCallback, callback)
-                    }
-                }
+        try {
+            val doc = app.get(data, timeout = 120).document
+            
+            // Try multiple iframe selectors
+            val iframeSelectors = listOf(
+                "div.TPlayer.embed_div iframe",
+                ".player iframe",
+                "iframe",
+                ".video-player iframe",
+                "[data-src*='http']"
+            )
+            
+            var iframes: org.jsoup.select.Elements? = null
+            
+            for (selector in iframeSelectors) {
+                iframes = doc.select(selector)
+                if (iframes.isNotEmpty()) break
             }
-            if (iframe.contains("tomatomatela")) {
-                val tomatoRegex =
-                    Regex("(\\/\\/apialfa.tomatomatela.com\\/ir\\/player.php\\?h=[a-zA-Z0-9]{0,8}[a-zA-Z0-9_-]+)")
-                tomatoRegex.findAll(iframe).map { tomreg ->
-                    tomreg.value
-                }.toList().apmap { tom ->
-                    val tomkey = tom.replace("//apialfa.tomatomatela.com/ir/player.php?h=", "")
-                    app.post(
-                        "https://apialfa.tomatomatela.com/ir/rd.php", allowRedirects = false,
-                        headers = mapOf(
-                            "Host" to "apialfa.tomatomatela.com",
-                            "User-Agent" to USER_AGENT,
-                            "Accept" to "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
-                            "Accept-Language" to "en-US,en;q=0.5",
-                            "Content-Type" to "application/x-www-form-urlencoded",
-                            "Origin" to "null",
-                            "DNT" to "1",
-                            "Connection" to "keep-alive",
-                            "Upgrade-Insecure-Requests" to "1",
-                            "Sec-Fetch-Dest" to "iframe",
-                            "Sec-Fetch-Mode" to "navigate",
-                            "Sec-Fetch-Site" to "same-origin",
-                        ),
-                        data = mapOf(Pair("url", tomkey))
-                    ).okhttpResponse.headers.values("location").apmap { loc ->
-                        if (loc.contains("goto_ddh.php")) {
-                            val gotoregex =
-                                Regex("(\\/\\/(api.cuevana3.me|cuevana.pro)\\/ir\\/goto_ddh.php\\?h=[a-zA-Z0-9]{0,8}[a-zA-Z0-9_-]+)")
-                            gotoregex.findAll(loc).map { goreg ->
-                                goreg.value.replace(Regex("//(?:api\\.cuevana3\\.me|cuevana\\.pro)/ir/goto_ddh\\.php\\?h="), "")
-                            }.toList().apmap { gotolink ->
-                                val redirectUrl = if (loc.contains("cuevana.pro")) "https://cuevana.pro/ir/redirect_ddh.php" else "https://api.cuevana3.me/ir/redirect_ddh.php"
-                                val hostHeader = if (loc.contains("cuevana.pro")) "cuevana.pro" else "api.cuevana3.me"
-                                
-                                app.post(
-                                    redirectUrl,
-                                    allowRedirects = false,
-                                    headers = mapOf(
-                                        "Host" to hostHeader,
-                                        "User-Agent" to USER_AGENT,
-                                        "Accept" to "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
-                                        "Accept-Language" to "en-US,en;q=0.5",
-                                        "Content-Type" to "application/x-www-form-urlencoded",
-                                        "Origin" to "null",
-                                        "DNT" to "1",
-                                        "Connection" to "keep-alive",
-                                        "Upgrade-Insecure-Requests" to "1",
-                                        "Sec-Fetch-Dest" to "iframe",
-                                        "Sec-Fetch-Mode" to "navigate",
-                                        "Sec-Fetch-Site" to "same-origin",
-                                    ),
-                                    data = mapOf(Pair("url", gotolink))
-                                ).okhttpResponse.headers.values("location").apmap { golink ->
-                                    loadExtractor(golink, data, subtitleCallback, callback)
-                                }
+            
+            iframes?.apmap { iframe ->
+                val iframeUrl = iframe.attr("data-src").takeIf { it.isNotEmpty() }
+                    ?: iframe.attr("src").takeIf { it.isNotEmpty() }
+                    ?: return@apmap
+                
+                val fullIframeUrl = fixUrl(iframeUrl)
+                
+                // Handle Cuevana specific embeds
+                if (fullIframeUrl.contains("cuevana") && fullIframeUrl.contains("fembed")) {
+                    val femregex = Regex("(https.\\/\\/.+\\/fembed\\/\\?h=[a-zA-Z0-9]{0,8}[a-zA-Z0-9_-]+)")
+                    femregex.findAll(fullIframeUrl).map { femreg ->
+                        femreg.value
+                    }.toList().apmap { fem ->
+                        val key = fem.substringAfter("?h=")
+                        val baseUrl = fem.substringBefore("/fembed")
+                        val apiUrl = "$baseUrl/fembed/api.php"
+                        val host = baseUrl.substringAfter("://").substringBefore("/")
+                        
+                        try {
+                            val response = app.post(
+                                apiUrl,
+                                allowRedirects = false,
+                                headers = mapOf(
+                                    "Host" to host,
+                                    "User-Agent" to USER_AGENT,
+                                    "Accept" to "application/json, text/javascript, */*; q=0.01",
+                                    "Accept-Language" to "en-US,en;q=0.5",
+                                    "Content-Type" to "application/x-www-form-urlencoded; charset=UTF-8",
+                                    "X-Requested-With" to "XMLHttpRequest",
+                                    "Origin" to baseUrl,
+                                    "DNT" to "1",
+                                    "Connection" to "keep-alive",
+                                ),
+                                data = mapOf("h" to key)
+                            ).text
+                            val json = parseJson<Femcuevana>(response)
+                            val link = json.url
+                            if (link.contains("fembed")) {
+                                loadExtractor(link, data, subtitleCallback, callback)
                             }
-                        }
-                        if (loc.contains("index.php?h=")) {
-                            val indexRegex =
-                                Regex("(\\/\\/(api.cuevana3.me|cuevana.pro)\\/sc\\/index.php\\?h=[a-zA-Z0-9]{0,8}[a-zA-Z0-9_-]+)")
-                            indexRegex.findAll(loc).map { indreg ->
-                                indreg.value.replace(Regex("//(?:api\\.cuevana3\\.me|cuevana\\.pro)/sc/index\\.php\\?h="), "")
-                            }.toList().apmap { inlink ->
-                                val scUrl = if (loc.contains("cuevana.pro")) "https://cuevana.pro/sc/r.php" else "https://api.cuevana3.me/sc/r.php"
-                                val hostHeader = if (loc.contains("cuevana.pro")) "cuevana.pro" else "api.cuevana3.me"
-                                
-                                app.post(
-                                    scUrl, allowRedirects = false,
-                                    headers = mapOf(
-                                        "Host" to hostHeader,
-                                        "User-Agent" to USER_AGENT,
-                                        "Accept" to "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
-                                        "Accept-Language" to "en-US,en;q=0.5",
-                                        "Accept-Encoding" to "gzip, deflate, br",
-                                        "Content-Type" to "application/x-www-form-urlencoded",
-                                        "Origin" to "null",
-                                        "DNT" to "1",
-                                        "Connection" to "keep-alive",
-                                        "Upgrade-Insecure-Requests" to "1",
-                                        "Sec-Fetch-Dest" to "iframe",
-                                        "Sec-Fetch-Mode" to "navigate",
-                                        "Sec-Fetch-Site" to "same-origin",
-                                        "Sec-Fetch-User" to "?1",
-                                    ),
-                                    data = mapOf(Pair("h", inlink))
-                                ).okhttpResponse.headers.values("location").apmap { link ->
-                                    loadExtractor(link, data, subtitleCallback, callback)
-                                }
-                            }
+                        } catch (e: Exception) {
+                            logError(e)
                         }
                     }
+                } else {
+                    // Try to load as direct extractor
+                    loadExtractor(fullIframeUrl, data, subtitleCallback, callback)
                 }
             }
+            return true
+        } catch (e: Exception) {
+            logError(e)
+            return false
         }
-        return true
     }
 }
