@@ -476,12 +476,11 @@ class CuevanaProvider : MainAPI() {
                     val videoUrl = match.groupValues[1]
                     if (videoUrl.startsWith("http") && (videoUrl.contains(".mp4") || videoUrl.contains(".m3u8"))) {
                         callback.invoke(
-                            ExtractorLink(
-                                name,
+                            newExtractorLink(
                                 "Cuevana Direct",
                                 videoUrl,
                                 data,
-                                Qualities.Unknown.value,
+                                720,
                                 videoUrl.contains(".m3u8")
                             )
                         )
@@ -501,12 +500,11 @@ class CuevanaProvider : MainAPI() {
                         val videoUrl = match.groupValues[1]
                         if (videoUrl.startsWith("http")) {
                             callback.invoke(
-                                ExtractorLink(
-                                    name,
+                                newExtractorLink(
                                     "Cuevana Video",
                                     videoUrl,
                                     data,
-                                    Qualities.Unknown.value,
+                                    720,
                                     videoUrl.contains(".m3u8")
                                 )
                             )
@@ -696,12 +694,11 @@ class CuevanaProvider : MainAPI() {
                                 val videoUrl = videoMatch.groupValues[1]
                                 if (videoUrl.startsWith("http")) {
                                     callback.invoke(
-                                        ExtractorLink(
-                                            name,
+                                        newExtractorLink(
                                             "Cuevana AJAX",
                                             videoUrl,
                                             data,
-                                            Qualities.Unknown.value,
+                                            720,
                                             videoUrl.contains(".m3u8")
                                         )
                                     )
