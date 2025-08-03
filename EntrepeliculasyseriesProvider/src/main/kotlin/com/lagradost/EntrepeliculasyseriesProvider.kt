@@ -4,6 +4,9 @@ import com.lagradost.cloudstream3.*
 import com.lagradost.cloudstream3.mvvm.logError
 import com.lagradost.cloudstream3.utils.ExtractorLink
 import com.lagradost.cloudstream3.utils.loadExtractor
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.coroutineScope
 
 class EntrepeliculasyseriesProvider : MainAPI() {
     override var mainUrl = "https://entrepeliculasyseries.nz"
@@ -301,37 +304,171 @@ class EntrepeliculasyseriesProvider : MainAPI() {
         isCasting: Boolean,
         subtitleCallback: (SubtitleFile) -> Unit,
         callback: (ExtractorLink) -> Unit
-    ): Boolean {
-        return try {
+    ): Boolean = coroutineScope {
+        return@coroutineScope try {
             val doc = app.get(
                 data, 
                 timeout = 120,
                 headers = mapOf("User-Agent" to userAgent)
             ).document
             
-            // Look for iframes
-            doc.select("iframe, .player iframe, .video-player iframe").forEach { iframe ->
-                try {
-                    val iframeUrl = iframe.attr("data-src").takeIf { it.isNotEmpty() }
-                        ?: iframe.attr("src").takeIf { it.isNotEmpty() }
-                        ?: return@forEach
-                    
-                    val fullUrl = if (iframeUrl.startsWith("http")) iframeUrl else "$mainUrl$iframeUrl"
-                    loadExtractor(fullUrl, data, subtitleCallback, callback)
-                } catch (e: Exception) {
-                    logError(e)
-                }
+            val tasks = mutableListOf<kotlinx.coroutines.Deferred<Unit>>()
+            
+            // Method 1: Look for dooplay player options (common in these sites)
+            doc.select(".dooplay_player_option, [data-option]").forEach { option ->
+                tasks.add(async {
+                    try {
+                        val optionUrl = option.attr("data-option")
+                        if (optionUrl.startsWith("http")) {
+                            loadExtractor(optionUrl, data, subtitleCallback, callback)
+                        } else if (optionUrl.isNotEmpty()) {
+                            // Try different player endpoints
+                            val playerUrls = listOf(
+                                "$mainUrl/wp-json/dooplayer/v1/$optionUrl",
+                                "$mainUrl/wp-json/dooplayer/v2/$optionUrl",
+                                "$mainUrl/wp-content/plugins/player/player.php?data=$optionUrl"
+                            )
+                            
+                            for (playerUrl in playerUrls) {
+                                try {
+                                    val playerDoc = app.get(playerUrl, headers = mapOf("User-Agent" to userAgent)).document
+                                    val iframe = playerDoc.selectFirst("iframe")
+                                    if (iframe != null) {
+                                        val iframeSrc = iframe.attr("src")
+                                        if (iframeSrc.startsWith("http")) {
+                                            loadExtractor(iframeSrc, data, subtitleCallback, callback)
+                                            break
+                                        }
+                                    }
+                                } catch (e: Exception) {
+                                    continue
+                                }
+                            }
+                        }
+                    } catch (e: Exception) {
+                        logError(e)
+                    }
+                })
             }
             
-            // Look for script tags with video URLs
+            // Method 2: Look for server/player buttons
+            doc.select("[data-server], .server-item, .player-button, [data-tplayernv]").forEach { server ->
+                tasks.add(async {
+                    try {
+                        val serverValue = server.attr("data-server") 
+                            ?: server.attr("data-tplayernv")
+                            ?: server.attr("data-option")
+                        
+                        if (serverValue.startsWith("http")) {
+                            loadExtractor(serverValue, data, subtitleCallback, callback)
+                        } else if (serverValue.isNotEmpty()) {
+                            // Try to get the actual player URL
+                            val playerEndpoints = listOf(
+                                "$mainUrl/wp-json/dooplayer/v1/$serverValue",
+                                "$mainUrl/wp-json/dooplayer/v2/$serverValue",
+                                "$mainUrl/player/$serverValue"
+                            )
+                            
+                            for (endpoint in playerEndpoints) {
+                                try {
+                                    val response = app.get(endpoint, headers = mapOf("User-Agent" to userAgent))
+                                    val responseText = response.text
+                                    
+                                    // Look for embed_url in JSON response
+                                    val embedUrlRegex = Regex("\"embed_url\"\\s*:\\s*\"([^\"]+)\"")
+                                    val embedMatch = embedUrlRegex.find(responseText)
+                                    if (embedMatch != null) {
+                                        val embedUrl = embedMatch.groupValues[1].replace("\\/", "/")
+                                        loadExtractor(embedUrl, data, subtitleCallback, callback)
+                                        break
+                                    }
+                                    
+                                    // Look for iframe in HTML response
+                                    val doc = response.document
+                                    val iframe = doc.selectFirst("iframe")
+                                    if (iframe != null) {
+                                        val iframeSrc = iframe.attr("src")
+                                        if (iframeSrc.startsWith("http")) {
+                                            loadExtractor(iframeSrc, data, subtitleCallback, callback)
+                                            break
+                                        }
+                                    }
+                                } catch (e: Exception) {
+                                    continue
+                                }
+                            }
+                        }
+                    } catch (e: Exception) {
+                        logError(e)
+                    }
+                })
+            }
+            
+            // Method 3: Direct iframes
+            doc.select("iframe").forEach { iframe ->
+                tasks.add(async {
+                    try {
+                        val iframeUrl = iframe.attr("data-src").takeIf { it.isNotEmpty() }
+                            ?: iframe.attr("src").takeIf { it.isNotEmpty() }
+                            ?: return@async
+                        
+                        val fullUrl = if (iframeUrl.startsWith("http")) iframeUrl else "$mainUrl$iframeUrl"
+                        loadExtractor(fullUrl, data, subtitleCallback, callback)
+                    } catch (e: Exception) {
+                        logError(e)
+                    }
+                })
+            }
+            
+            // Method 4: Script analysis for video URLs
             doc.select("script").forEach { script ->
+                tasks.add(async {
+                    try {
+                        val scriptContent = script.data()
+                        if (scriptContent.isNotEmpty()) {
+                            // Look for video hosting patterns
+                            val patterns = listOf(
+                                Regex("(?:embed_url|url|src)\\s*[:\\=\"']\\s*([^\"'\\s]+(?:fembed|embedsb|streamtape|doodstream|uqload|mixdrop|upstream|voe|streamwish|filemoon|okru|dailymotion)[^\"'\\s]*)", RegexOption.IGNORE_CASE),
+                                Regex("(?:\"|\')([^\"\']*(?:fembed|embedsb|streamtape|doodstream|uqload|mixdrop|upstream|voe|streamwish|filemoon|okru|dailymotion)[^\"\']*?)(?:\"|\')", RegexOption.IGNORE_CASE),
+                                Regex("file\\s*:\\s*[\"']([^\"']+\\.(?:mp4|m3u8))[\"']"),
+                                Regex("src\\s*:\\s*[\"']([^\"']+)[\"']")
+                            )
+                            
+                            patterns.forEach { pattern ->
+                                pattern.findAll(scriptContent).forEach { match ->
+                                    val url = match.groupValues[1]
+                                    if (url.startsWith("http") && 
+                                        !url.contains("facebook") && 
+                                        !url.contains("twitter") && 
+                                        !url.contains("google") &&
+                                        !url.contains("analytics")) {
+                                        loadExtractor(url, data, subtitleCallback, callback)
+                                    }
+                                }
+                            }
+                        }
+                    } catch (e: Exception) {
+                        logError(e)
+                    }
+                })
+            }
+            
+            // Method 5: Look in page source for specific patterns
+            tasks.add(async {
                 try {
-                    val scriptContent = script.data()
-                    if (scriptContent.contains("http") && (scriptContent.contains(".mp4") || scriptContent.contains(".m3u8"))) {
-                        val urlPattern = Regex("(?:\"|\')([^\"\']*(?:\\.mp4|\\.m3u8)[^\"\']*?)(?:\"|\')")
-                        urlPattern.findAll(scriptContent).forEach { match ->
-                            val url = match.groupValues[1]
-                            if (url.startsWith("http")) {
+                    val pageSource = doc.html()
+                    val videoPatterns = listOf(
+                        Regex("https?://[^\\s\"'<>]+(?:fembed|embedsb|streamtape|doodstream|uqload|mixdrop|upstream|voe|streamwish|filemoon)\\.(?:com|net|org|tv|me|co)[^\\s\"'<>]*", RegexOption.IGNORE_CASE),
+                        Regex("https?://[^\\s\"'<>]+\\.(?:mp4|m3u8)", RegexOption.IGNORE_CASE)
+                    )
+                    
+                    videoPatterns.forEach { pattern ->
+                        pattern.findAll(pageSource).forEach { match ->
+                            val url = match.value
+                            if (!url.contains("facebook") && 
+                                !url.contains("twitter") && 
+                                !url.contains("google") &&
+                                !url.contains("analytics")) {
                                 loadExtractor(url, data, subtitleCallback, callback)
                             }
                         }
@@ -339,8 +476,9 @@ class EntrepeliculasyseriesProvider : MainAPI() {
                 } catch (e: Exception) {
                     logError(e)
                 }
-            }
+            })
             
+            tasks.awaitAll()
             true
         } catch (e: Exception) {
             logError(e)
