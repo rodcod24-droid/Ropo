@@ -459,109 +459,263 @@ class CuevanaProvider : MainAPI() {
             val doc = app.get(data, 
                 timeout = 120,
                 headers = mapOf(
-                    "User-Agent" to "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36"
+                    "User-Agent" to "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36",
+                    "Referer" to mainUrl
                 )
             ).document
             
-            // Enhanced iframe selectors
-            val iframeSelectors = listOf(
-                "div.TPlayer.embed_div iframe",
-                ".player iframe",
-                "iframe[data-src]",
-                "iframe[src]",
-                "iframe",
-                ".video-player iframe",
-                "[data-src*='http']",
-                ".embed iframe",
-                "#player iframe"
-            )
+            var foundLinks = false
             
-            var iframes: org.jsoup.select.Elements? = null
-            
-            for (selector in iframeSelectors) {
-                iframes = doc.select(selector)
-                if (iframes.isNotEmpty()) break
-            }
-            
-            if (iframes == null || iframes.isEmpty()) {
-                // Try to find embedded player buttons or links
-                val playerButtons = doc.select("button[data-src], a[data-src], .player-option")
-                playerButtons.forEach { button ->
-                    val buttonUrl = button.attr("data-src")
-                    if (buttonUrl.isNotEmpty()) {
-                        val fullUrl = if (buttonUrl.startsWith("http")) {
-                            buttonUrl
-                        } else if (buttonUrl.startsWith("/")) {
-                            "$mainUrl$buttonUrl"
-                        } else {
-                            "$mainUrl/$buttonUrl"
+            // Method 1: Look for direct video sources in script tags
+            doc.select("script").forEach { script ->
+                val scriptContent = script.html()
+                
+                // Look for JWPlayer configuration
+                val jwPlayerRegex = Regex("""sources?\s*:\s*\[?\s*\{\s*['""]?file['""]?\s*:\s*['""]([^'"]+)['""]""")
+                jwPlayerRegex.findAll(scriptContent).forEach { match ->
+                    val videoUrl = match.groupValues[1]
+                    if (videoUrl.startsWith("http") && (videoUrl.contains(".mp4") || videoUrl.contains(".m3u8"))) {
+                        callback.invoke(
+                            ExtractorLink(
+                                name,
+                                "Cuevana Direct",
+                                videoUrl,
+                                data,
+                                Qualities.Unknown.value,
+                                videoUrl.contains(".m3u8")
+                            )
+                        )
+                        foundLinks = true
+                    }
+                }
+                
+                // Look for other video patterns
+                val videoPatterns = listOf(
+                    Regex("""['""]file['""]?\s*:\s*['""]([^'"]+\.(?:mp4|m3u8|mkv))['""]"""),
+                    Regex("""['""]src['""]?\s*:\s*['""]([^'"]+\.(?:mp4|m3u8|mkv))['""]"""),
+                    Regex("""video['""]?\s*:\s*['""]([^'"]+\.(?:mp4|m3u8|mkv))['""]""")
+                )
+                
+                videoPatterns.forEach { pattern ->
+                    pattern.findAll(scriptContent).forEach { match ->
+                        val videoUrl = match.groupValues[1]
+                        if (videoUrl.startsWith("http")) {
+                            callback.invoke(
+                                ExtractorLink(
+                                    name,
+                                    "Cuevana Video",
+                                    videoUrl,
+                                    data,
+                                    Qualities.Unknown.value,
+                                    videoUrl.contains(".m3u8")
+                                )
+                            )
+                            foundLinks = true
                         }
-                        loadExtractor(fullUrl, data, subtitleCallback, callback)
                     }
                 }
             }
             
-            iframes?.apmap { iframe ->
-                val rawIframeUrl = iframe.attr("data-src").takeIf { it.isNotEmpty() }
-                    ?: iframe.attr("src").takeIf { it.isNotEmpty() }
-                    ?: return@apmap
+            // Method 2: Look for player buttons with data attributes
+            val playerButtons = doc.select(
+                "button[data-src], a[data-src], .player-option[data-src], " +
+                "button[data-url], a[data-url], .player-option[data-url], " +
+                ".server-item[data-src], .server-item[data-url], " +
+                "[onclick*='player'], [data-player], .btn-server"
+            )
+            
+            playerButtons.forEach { button ->
+                val buttonUrl = button.attr("data-src").takeIf { it.isNotEmpty() }
+                    ?: button.attr("data-url").takeIf { it.isNotEmpty() }
+                    ?: button.attr("data-player").takeIf { it.isNotEmpty() }
+                    ?: ""
                 
-                val fullIframeUrl = if (rawIframeUrl.startsWith("http")) {
-                    rawIframeUrl
-                } else if (rawIframeUrl.startsWith("/")) {
-                    "$mainUrl$rawIframeUrl"
-                } else {
-                    "$mainUrl/$rawIframeUrl"
+                if (buttonUrl.isNotEmpty()) {
+                    val fullUrl = if (buttonUrl.startsWith("http")) {
+                        buttonUrl
+                    } else if (buttonUrl.startsWith("/")) {
+                        "$mainUrl$buttonUrl"
+                    } else {
+                        "$mainUrl/$buttonUrl"
+                    }
+                    
+                    coroutineScope {
+                        async {
+                            try {
+                                loadExtractor(fullUrl, data, subtitleCallback, callback)
+                                foundLinks = true
+                            } catch (e: Exception) {
+                                logError(e)
+                            }
+                        }
+                    }
                 }
-                
-                // Handle Cuevana specific embeds
-                if (fullIframeUrl.contains("cuevana") && fullIframeUrl.contains("fembed")) {
-                    val femregex = Regex("(https.\\/\\/.+\\/fembed\\/\\?h=[a-zA-Z0-9]{0,8}[a-zA-Z0-9_-]+)")
-                    femregex.findAll(fullIframeUrl).map { femreg ->
-                        femreg.value
-                    }.toList().apmap { fem ->
-                        val key = fem.substringAfter("?h=")
-                        val baseUrl = fem.substringBefore("/fembed")
-                        val apiUrl = "$baseUrl/fembed/api.php"
-                        val host = try {
-                            baseUrl.substringAfter("://").substringBefore("/")
-                        } catch (e: Exception) {
-                            "cuevana.pro"
+            }
+            
+            // Method 3: Enhanced iframe detection
+            val iframeSelectors = listOf(
+                "div.TPlayer.embed_div iframe",
+                "div.TPlayer iframe", 
+                ".video-container iframe",
+                ".player iframe",
+                "iframe[data-src]",
+                "iframe[src]",
+                "#video iframe",
+                "#player iframe",
+                ".embed iframe",
+                ".video-player iframe",
+                "iframe"
+            )
+            
+            for (selector in iframeSelectors) {
+                val iframes = doc.select(selector)
+                if (iframes.isNotEmpty()) {
+                    iframes.apmap { iframe ->
+                        val rawIframeUrl = iframe.attr("data-src").takeIf { it.isNotEmpty() }
+                            ?: iframe.attr("src").takeIf { it.isNotEmpty() }
+                            ?: return@apmap
+                        
+                        if (rawIframeUrl.startsWith("about:") || rawIframeUrl.startsWith("javascript:")) {
+                            return@apmap
+                        }
+                        
+                        val fullIframeUrl = if (rawIframeUrl.startsWith("http")) {
+                            rawIframeUrl
+                        } else if (rawIframeUrl.startsWith("//")) {
+                            "https:$rawIframeUrl"
+                        } else if (rawIframeUrl.startsWith("/")) {
+                            "$mainUrl$rawIframeUrl"
+                        } else {
+                            "$mainUrl/$rawIframeUrl"
                         }
                         
                         try {
-                            val response = app.post(
-                                apiUrl,
-                                allowRedirects = false,
-                                headers = mapOf(
-                                    "Host" to host,
-                                    "User-Agent" to "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36",
-                                    "Accept" to "application/json, text/javascript, */*; q=0.01",
-                                    "Accept-Language" to "en-US,en;q=0.5",
-                                    "Content-Type" to "application/x-www-form-urlencoded; charset=UTF-8",
-                                    "X-Requested-With" to "XMLHttpRequest",
-                                    "Origin" to baseUrl,
-                                    "DNT" to "1",
-                                    "Connection" to "keep-alive",
-                                    "Referer" to data
-                                ),
-                                data = mapOf("h" to key)
-                            ).text
-                            val json = parseJson<Femcuevana>(response)
-                            val link = json.url
-                            if (link.contains("fembed") || link.startsWith("http")) {
-                                loadExtractor(link, data, subtitleCallback, callback)
+                            // Handle Cuevana specific fembed
+                            if (fullIframeUrl.contains("fembed")) {
+                                val femregex = Regex("(https?:\\/\\/.+\\/fembed\\/\\?h=[a-zA-Z0-9]{0,8}[a-zA-Z0-9_-]+)")
+                                femregex.findAll(fullIframeUrl).forEach { femreg ->
+                                    val fem = femreg.value
+                                    val key = fem.substringAfter("?h=")
+                                    val baseUrl = fem.substringBefore("/fembed")
+                                    val apiUrl = "$baseUrl/fembed/api.php"
+                                    
+                                    try {
+                                        val response = app.post(
+                                            apiUrl,
+                                            headers = mapOf(
+                                                "User-Agent" to "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+                                                "Accept" to "application/json, text/javascript, */*; q=0.01",
+                                                "Content-Type" to "application/x-www-form-urlencoded; charset=UTF-8",
+                                                "X-Requested-With" to "XMLHttpRequest",
+                                                "Origin" to baseUrl,
+                                                "Referer" to data
+                                            ),
+                                            data = mapOf("h" to key)
+                                        ).text
+                                        
+                                        val json = parseJson<Femcuevana>(response)
+                                        if (json.url.startsWith("http")) {
+                                            loadExtractor(json.url, data, subtitleCallback, callback)
+                                            foundLinks = true
+                                        }
+                                    } catch (e: Exception) {
+                                        logError(e)
+                                    }
+                                }
+                            } else {
+                                // Try loading iframe content to find nested players
+                                val iframeDoc = app.get(fullIframeUrl, 
+                                    headers = mapOf(
+                                        "User-Agent" to "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+                                        "Referer" to data
+                                    )
+                                ).document
+                                
+                                // Look for video sources in iframe
+                                iframeDoc.select("script").forEach { script ->
+                                    val content = script.html()
+                                    val videoRegex = Regex("""['""]file['""]?\s*:\s*['""]([^'"]+\.(?:mp4|m3u8))['""]""")
+                                    videoRegex.findAll(content).forEach { match ->
+                                        val videoUrl = match.groupValues[1]
+                                        if (videoUrl.startsWith("http")) {
+                                            callback.invoke(
+                                                ExtractorLink(
+                                                    name,
+                                                    "Cuevana Iframe",
+                                                    videoUrl,
+                                                    fullIframeUrl,
+                                                    Qualities.Unknown.value,
+                                                    videoUrl.contains(".m3u8")
+                                                )
+                                            )
+                                            foundLinks = true
+                                        }
+                                    }
+                                }
+                                
+                                // Fallback to extractor
+                                loadExtractor(fullIframeUrl, data, subtitleCallback, callback)
+                                foundLinks = true
                             }
                         } catch (e: Exception) {
                             logError(e)
                         }
                     }
-                } else {
-                    // Try to load as direct extractor
-                    loadExtractor(fullIframeUrl, data, subtitleCallback, callback)
+                    break
                 }
             }
-            return true
+            
+            // Method 4: Look for AJAX endpoints
+            doc.select("script").forEach { script ->
+                val content = script.html()
+                
+                // Look for AJAX calls that might load video URLs
+                val ajaxRegex = Regex("""(?:url|endpoint)['""]?\s*:\s*['"]([^'"]+)['"]""")
+                ajaxRegex.findAll(content).forEach { match ->
+                    val ajaxUrl = match.groupValues[1]
+                    if (ajaxUrl.contains("player") || ajaxUrl.contains("video") || ajaxUrl.contains("stream")) {
+                        try {
+                            val fullAjaxUrl = if (ajaxUrl.startsWith("http")) {
+                                ajaxUrl
+                            } else if (ajaxUrl.startsWith("/")) {
+                                "$mainUrl$ajaxUrl"
+                            } else {
+                                "$mainUrl/$ajaxUrl"
+                            }
+                            
+                            val ajaxResponse = app.get(fullAjaxUrl, 
+                                headers = mapOf(
+                                    "User-Agent" to "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+                                    "X-Requested-With" to "XMLHttpRequest",
+                                    "Referer" to data
+                                )
+                            ).text
+                            
+                            val videoRegex = Regex("""['""](?:file|url|src)['""]?\s*:\s*['""]([^'"]+\.(?:mp4|m3u8))['""]""")
+                            videoRegex.findAll(ajaxResponse).forEach { videoMatch ->
+                                val videoUrl = videoMatch.groupValues[1]
+                                if (videoUrl.startsWith("http")) {
+                                    callback.invoke(
+                                        ExtractorLink(
+                                            name,
+                                            "Cuevana AJAX",
+                                            videoUrl,
+                                            data,
+                                            Qualities.Unknown.value,
+                                            videoUrl.contains(".m3u8")
+                                        )
+                                    )
+                                    foundLinks = true
+                                }
+                            }
+                        } catch (e: Exception) {
+                            logError(e)
+                        }
+                    }
+                }
+            }
+            
+            return foundLinks
         } catch (e: Exception) {
             logError(e)
             return false
