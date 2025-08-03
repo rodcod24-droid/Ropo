@@ -254,20 +254,14 @@ class CuevanaProvider : MainAPI() {
             
             val tasks = mutableListOf<kotlinx.coroutines.Deferred<Unit>>()
             
-            // Method 1: Look for player buttons/options
-            doc.select("[data-tplayernv], [data-option], [data-server], .player-option").forEach { option ->
+            // Method 1: Look for player options with data-tplayernv attribute (common in Cuevana sites)
+            doc.select("[data-tplayernv], .TPlayerNv").forEach { option ->
                 tasks.add(async {
                     try {
-                        val optionUrl = option.attr("data-tplayernv")
-                            ?: option.attr("data-option")
-                            ?: option.attr("data-server")
-                            ?: return@async
-                        
-                        if (optionUrl.startsWith("http")) {
-                            loadExtractor(optionUrl, data, subtitleCallback, callback)
-                        } else {
-                            // Get the player page
-                            val playerUrl = "$mainUrl/wp-json/dooplayer/v1/$optionUrl" 
+                        val optionValue = option.attr("data-tplayernv")
+                        if (optionValue.isNotEmpty()) {
+                            // Get the actual video URL from the player endpoint
+                            val playerUrl = "$mainUrl/wp-json/dooplayer/v1/$optionValue"
                             val playerResponse = app.get(playerUrl, headers = mapOf("User-Agent" to userAgent))
                             val playerData = parseJson<PlayerResponse>(playerResponse.text)
                             if (playerData.embed_url.isNotEmpty()) {
@@ -280,7 +274,63 @@ class CuevanaProvider : MainAPI() {
                 })
             }
             
-            // Method 2: Direct iframes
+            // Method 2: Look for dooplay player options (common WordPress video theme)
+            doc.select(".dooplay_player_option, [data-option]").forEach { option ->
+                tasks.add(async {
+                    try {
+                        val optionUrl = option.attr("data-option")
+                        if (optionUrl.startsWith("http")) {
+                            loadExtractor(optionUrl, data, subtitleCallback, callback)
+                        } else if (optionUrl.isNotEmpty()) {
+                            // Try to get player data
+                            val playerUrl = "$mainUrl/wp-json/dooplayer/v2/$optionUrl"
+                            try {
+                                val playerResponse = app.get(playerUrl, headers = mapOf("User-Agent" to userAgent))
+                                val playerData = parseJson<PlayerResponse>(playerResponse.text)
+                                if (playerData.embed_url.isNotEmpty()) {
+                                    loadExtractor(playerData.embed_url, data, subtitleCallback, callback)
+                                }
+                            } catch (e: Exception) {
+                                // Try alternative player endpoint
+                                val altPlayerUrl = "$mainUrl/wp-json/dooplayer/v1/$optionUrl"
+                                val altPlayerResponse = app.get(altPlayerUrl, headers = mapOf("User-Agent" to userAgent))
+                                val altPlayerData = parseJson<PlayerResponse>(altPlayerResponse.text)
+                                if (altPlayerData.embed_url.isNotEmpty()) {
+                                    loadExtractor(altPlayerData.embed_url, data, subtitleCallback, callback)
+                                }
+                            }
+                        }
+                    } catch (e: Exception) {
+                        logError(e)
+                    }
+                })
+            }
+            
+            // Method 3: Look for server tabs/buttons
+            doc.select("[data-server], .server-item, .TPlayerNv li").forEach { server ->
+                tasks.add(async {
+                    try {
+                        val serverUrl = server.attr("data-server") ?: server.attr("data-tplayernv")
+                        if (serverUrl.isNotEmpty()) {
+                            if (serverUrl.startsWith("http")) {
+                                loadExtractor(serverUrl, data, subtitleCallback, callback)
+                            } else {
+                                // Get server data
+                                val playerUrl = "$mainUrl/wp-json/dooplayer/v1/$serverUrl"
+                                val playerResponse = app.get(playerUrl, headers = mapOf("User-Agent" to userAgent))
+                                val playerData = parseJson<PlayerResponse>(playerResponse.text)
+                                if (playerData.embed_url.isNotEmpty()) {
+                                    loadExtractor(playerData.embed_url, data, subtitleCallback, callback)
+                                }
+                            }
+                        }
+                    } catch (e: Exception) {
+                        logError(e)
+                    }
+                })
+            }
+            
+            // Method 4: Direct iframes
             doc.select("iframe").forEach { iframe ->
                 tasks.add(async {
                     try {
@@ -296,24 +346,24 @@ class CuevanaProvider : MainAPI() {
                 })
             }
             
-            // Method 3: Script analysis for video URLs
+            // Method 5: Script analysis for embedded URLs
             doc.select("script").forEach { script ->
                 tasks.add(async {
                     try {
                         val scriptContent = script.data()
                         if (scriptContent.contains("http")) {
-                            // Look for common video hosting patterns
+                            // Look for video hosting patterns
                             val patterns = listOf(
+                                Regex("(?:embed_url|url|src)\\s*[:\\=\"']\\s*([^\"'\\s]+(?:fembed|embedsb|streamtape|doodstream|uqload|mixdrop|upstream|voe|streamwish|filemoon)[^\"'\\s]*)", RegexOption.IGNORE_CASE),
                                 Regex("(?:\"|\')([^\"\']*(?:fembed|embedsb|streamtape|doodstream|uqload|mixdrop|upstream|voe|streamwish|filemoon)[^\"\']*?)(?:\"|\')", RegexOption.IGNORE_CASE),
-                                Regex("file:\\s*[\"']([^\"']+\\.(?:mp4|m3u8))[\"']"),
-                                Regex("src:\\s*[\"']([^\"']+)[\"']"),
-                                Regex("url:\\s*[\"']([^\"']+)[\"']")
+                                Regex("file\\s*:\\s*[\"']([^\"']+\\.(?:mp4|m3u8))[\"']"),
+                                Regex("src\\s*:\\s*[\"']([^\"']+)[\"']")
                             )
                             
                             patterns.forEach { pattern ->
                                 pattern.findAll(scriptContent).forEach { match ->
                                     val url = match.groupValues[1]
-                                    if (url.startsWith("http") && !url.contains("facebook") && !url.contains("twitter")) {
+                                    if (url.startsWith("http") && !url.contains("facebook") && !url.contains("twitter") && !url.contains("google")) {
                                         loadExtractor(url, data, subtitleCallback, callback)
                                     }
                                 }
