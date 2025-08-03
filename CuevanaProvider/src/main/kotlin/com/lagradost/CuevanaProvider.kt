@@ -6,7 +6,6 @@ import com.lagradost.cloudstream3.mvvm.logError
 import com.lagradost.cloudstream3.utils.AppUtils.parseJson
 import com.lagradost.cloudstream3.utils.ExtractorLink
 import com.lagradost.cloudstream3.utils.loadExtractor
-import com.lagradost.cloudstream3.utils.Qualities
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
@@ -467,68 +466,20 @@ class CuevanaProvider : MainAPI() {
             
             var foundLinks = false
             
-            // Method 1: Look for direct video sources in script tags
-            doc.select("script").forEach { script ->
-                val scriptContent = script.html()
-                
-                // Look for JWPlayer configuration
-                val jwPlayerRegex = Regex("""sources?\s*:\s*\[?\s*\{\s*['""]?file['""]?\s*:\s*['""]([^'"]+)['""]""")
-                jwPlayerRegex.findAll(scriptContent).forEach { match ->
-                    val videoUrl = match.groupValues[1]
-                    if (videoUrl.startsWith("http") && (videoUrl.contains(".mp4") || videoUrl.contains(".m3u8"))) {
-                        callback.invoke(
-                            ExtractorLink(
-                                videoUrl,
-                                "Cuevana Direct",
-                                videoUrl,
-                                data,
-                                Qualities.Unknown.value,
-                                videoUrl.contains(".m3u8")
-                            )
-                        )
-                        foundLinks = true
-                    }
-                }
-                
-                // Look for other video patterns
-                val videoPatterns = listOf(
-                    Regex("""['""]file['""]?\s*:\s*['""]([^'"]+\.(?:mp4|m3u8|mkv))['""]"""),
-                    Regex("""['""]src['""]?\s*:\s*['""]([^'"]+\.(?:mp4|m3u8|mkv))['""]"""),
-                    Regex("""video['""]?\s*:\s*['""]([^'"]+\.(?:mp4|m3u8|mkv))['""]""")
-                )
-                
-                videoPatterns.forEach { pattern ->
-                    pattern.findAll(scriptContent).forEach { match ->
-                        val videoUrl = match.groupValues[1]
-                        if (videoUrl.startsWith("http")) {
-                            callback.invoke(
-                                ExtractorLink(
-                                    videoUrl,
-                                    "Cuevana Video", 
-                                    videoUrl,
-                                    data,
-                                    Qualities.Unknown.value,
-                                    videoUrl.contains(".m3u8")
-                                )
-                            )
-                            foundLinks = true
-                        }
-                    }
-                }
-            }
-            
-            // Method 2: Look for player buttons with data attributes
+            // Method 1: Look for player buttons with data attributes
             val playerButtons = doc.select(
                 "button[data-src], a[data-src], .player-option[data-src], " +
                 "button[data-url], a[data-url], .player-option[data-url], " +
                 ".server-item[data-src], .server-item[data-url], " +
-                "[onclick*='player'], [data-player], .btn-server"
+                "[onclick*='player'], [data-player], .btn-server, " +
+                ".TPlayerTb, .aa-cn, .Button"
             )
             
             playerButtons.forEach { button ->
                 val buttonUrl = button.attr("data-src").takeIf { it.isNotEmpty() }
                     ?: button.attr("data-url").takeIf { it.isNotEmpty() }
                     ?: button.attr("data-player").takeIf { it.isNotEmpty() }
+                    ?: button.attr("href").takeIf { it.isNotEmpty() }
                     ?: ""
                 
                 if (buttonUrl.isNotEmpty()) {
@@ -540,20 +491,16 @@ class CuevanaProvider : MainAPI() {
                         "$mainUrl/$buttonUrl"
                     }
                     
-                    coroutineScope {
-                        async {
-                            try {
-                                loadExtractor(fullUrl, data, subtitleCallback, callback)
-                                foundLinks = true
-                            } catch (e: Exception) {
-                                logError(e)
-                            }
-                        }
+                    try {
+                        loadExtractor(fullUrl, data, subtitleCallback, callback)
+                        foundLinks = true
+                    } catch (e: Exception) {
+                        logError(e)
                     }
                 }
             }
             
-            // Method 3: Enhanced iframe detection
+            // Method 2: Enhanced iframe detection
             val iframeSelectors = listOf(
                 "div.TPlayer.embed_div iframe",
                 "div.TPlayer iframe", 
@@ -624,37 +571,7 @@ class CuevanaProvider : MainAPI() {
                                     }
                                 }
                             } else {
-                                // Try loading iframe content to find nested players
-                                val iframeDoc = app.get(fullIframeUrl, 
-                                    headers = mapOf(
-                                        "User-Agent" to "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
-                                        "Referer" to data
-                                    )
-                                ).document
-                                
-                                // Look for video sources in iframe
-                                iframeDoc.select("script").forEach { script ->
-                                    val content = script.html()
-                                    val videoRegex = Regex("""['""]file['""]?\s*:\s*['""]([^'"]+\.(?:mp4|m3u8))['""]""")
-                                    videoRegex.findAll(content).forEach { match ->
-                                        val videoUrl = match.groupValues[1]
-                                        if (videoUrl.startsWith("http")) {
-                                            callback.invoke(
-                                                ExtractorLink(
-                                                    name,
-                                                    "Cuevana Iframe",
-                                                    videoUrl,
-                                                    fullIframeUrl,
-                                                    Qualities.Unknown.value,
-                                                    videoUrl.contains(".m3u8")
-                                                )
-                                            )
-                                            foundLinks = true
-                                        }
-                                    }
-                                }
-                                
-                                // Fallback to extractor
+                                // Use loadExtractor for all other URLs
                                 loadExtractor(fullIframeUrl, data, subtitleCallback, callback)
                                 foundLinks = true
                             }
@@ -666,51 +583,28 @@ class CuevanaProvider : MainAPI() {
                 }
             }
             
-            // Method 4: Look for AJAX endpoints
+            // Method 3: Look for AJAX endpoints and direct URLs in scripts
             doc.select("script").forEach { script ->
                 val content = script.html()
                 
-                // Look for AJAX calls that might load video URLs
-                val ajaxRegex = Regex("""(?:url|endpoint)['""]?\s*:\s*['"]([^'"]+)['"]""")
-                ajaxRegex.findAll(content).forEach { match ->
-                    val ajaxUrl = match.groupValues[1]
-                    if (ajaxUrl.contains("player") || ajaxUrl.contains("video") || ajaxUrl.contains("stream")) {
-                        try {
-                            val fullAjaxUrl = if (ajaxUrl.startsWith("http")) {
-                                ajaxUrl
-                            } else if (ajaxUrl.startsWith("/")) {
-                                "$mainUrl$ajaxUrl"
-                            } else {
-                                "$mainUrl/$ajaxUrl"
+                // Look for common video URL patterns
+                val urlPatterns = listOf(
+                    Regex("""['"](https?://[^'"]+\.(?:mp4|m3u8|mkv))['"']"""),
+                    Regex("""['"](https?://[^'"]*(?:fembed|streamtape|doodstream|upstream|mixdrop)[^'"]*)['"']"""),
+                    Regex("""src['"]*\s*:\s*['"](https?://[^'"]+)['"']"""),
+                    Regex("""file['"]*\s*:\s*['"](https?://[^'"]+)['"']""")
+                )
+                
+                urlPatterns.forEach { pattern ->
+                    pattern.findAll(content).forEach { match ->
+                        val url = match.groupValues[1]
+                        if (url.startsWith("http")) {
+                            try {
+                                loadExtractor(url, data, subtitleCallback, callback)
+                                foundLinks = true
+                            } catch (e: Exception) {
+                                logError(e)
                             }
-                            
-                            val ajaxResponse = app.get(fullAjaxUrl, 
-                                headers = mapOf(
-                                    "User-Agent" to "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
-                                    "X-Requested-With" to "XMLHttpRequest",
-                                    "Referer" to data
-                                )
-                            ).text
-                            
-                            val videoRegex = Regex("""['""](?:file|url|src)['""]?\s*:\s*['""]([^'"]+\.(?:mp4|m3u8))['""]""")
-                            videoRegex.findAll(ajaxResponse).forEach { videoMatch ->
-                                val videoUrl = videoMatch.groupValues[1]
-                                if (videoUrl.startsWith("http")) {
-                                    callback.invoke(
-                                        ExtractorLink(
-                                            videoUrl,
-                                            "Cuevana AJAX",
-                                            videoUrl,
-                                            data,
-                                            Qualities.Unknown.value,
-                                            videoUrl.contains(".m3u8")
-                                        )
-                                    )
-                                    foundLinks = true
-                                }
-                            }
-                        } catch (e: Exception) {
-                            logError(e)
                         }
                     }
                 }
