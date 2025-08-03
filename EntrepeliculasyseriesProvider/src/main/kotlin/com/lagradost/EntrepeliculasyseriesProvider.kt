@@ -26,7 +26,6 @@ class EntrepeliculasyseriesProvider : MainAPI() {
     override suspend fun getMainPage(page: Int, request: MainPageRequest): HomePageResponse {
         val items = ArrayList<HomePageList>()
         
-        // Try different sections with specific URLs
         val sections = listOf(
             Triple("Películas", "$mainUrl/peliculas", listOf(".MovieList .TPostMv", ".movies .item", ".content .item")),
             Triple("Series", "$mainUrl/series", listOf(".MovieList .TPostMv", ".series .item", ".content .item")),
@@ -85,7 +84,6 @@ class EntrepeliculasyseriesProvider : MainAPI() {
             }
         }
 
-        // Fallback: try main page
         if (items.isEmpty()) {
             try {
                 val mainDoc = app.get(
@@ -219,11 +217,9 @@ class EntrepeliculasyseriesProvider : MainAPI() {
                 }
             }
             
-            // Extract year
             val yearText = soup.selectFirst(".year, .date, .meta")?.text() ?: soup.text()
             val year = Regex("(19|20)\\d{2}").find(yearText)?.value?.toIntOrNull()
             
-            // Extract episodes for series
             val episodes = soup.select(".episodes .episode, .episode-list li, .season li").mapNotNull { li ->
                 try {
                     val href = li.selectFirst("a")?.attr("href") ?: return@mapNotNull null
@@ -238,11 +234,10 @@ class EntrepeliculasyseriesProvider : MainAPI() {
                     val episodeText = li.selectFirst(".episode-number, .number")?.text() ?: href
                     val episodeName = li.selectFirst(".episode-title, .title")?.text()
                     
-                    // Parse season and episode from various formats
                     val patterns = listOf(
-                        Regex("(\\d+)x(\\d+)"),  // 1x1
-                        Regex("temporada[/-]?(\\d+).*?capitulo[/-]?(\\d+)", RegexOption.IGNORE_CASE),  // temporada-1-capitulo-1
-                        Regex("s(\\d+)e(\\d+)", RegexOption.IGNORE_CASE)  // s1e1
+                        Regex("(\\d+)x(\\d+)"),
+                        Regex("temporada[/-]?(\\d+).*?capitulo[/-]?(\\d+)", RegexOption.IGNORE_CASE),
+                        Regex("s(\\d+)e(\\d+)", RegexOption.IGNORE_CASE)
                     )
                     
                     var season: Int? = null
@@ -305,7 +300,7 @@ class EntrepeliculasyseriesProvider : MainAPI() {
         subtitleCallback: (SubtitleFile) -> Unit,
         callback: (ExtractorLink) -> Unit
     ): Boolean = coroutineScope {
-        return@coroutineScope try {
+        try {
             val doc = app.get(
                 data, 
                 timeout = 120,
@@ -314,7 +309,7 @@ class EntrepeliculasyseriesProvider : MainAPI() {
             
             val tasks = mutableListOf<kotlinx.coroutines.Deferred<Unit>>()
             
-            // Method 1: Look for dooplay player options (common in these sites)
+            // Method 1: Look for dooplay player options
             doc.select(".dooplay_player_option, [data-option]").forEach { option ->
                 tasks.add(async {
                     try {
@@ -322,7 +317,6 @@ class EntrepeliculasyseriesProvider : MainAPI() {
                         if (optionUrl.startsWith("http")) {
                             loadExtractor(optionUrl, data, subtitleCallback, callback)
                         } else if (optionUrl.isNotEmpty()) {
-                            // Try different player endpoints
                             val playerUrls = listOf(
                                 "$mainUrl/wp-json/dooplayer/v1/$optionUrl",
                                 "$mainUrl/wp-json/dooplayer/v2/$optionUrl",
@@ -346,7 +340,7 @@ class EntrepeliculasyseriesProvider : MainAPI() {
                             }
                         }
                     } catch (e: Exception) {
-                        logError(e)
+                        // Continue processing other options
                     }
                 })
             }
@@ -362,7 +356,6 @@ class EntrepeliculasyseriesProvider : MainAPI() {
                         if (serverValue.startsWith("http")) {
                             loadExtractor(serverValue, data, subtitleCallback, callback)
                         } else if (serverValue.isNotEmpty()) {
-                            // Try to get the actual player URL
                             val playerEndpoints = listOf(
                                 "$mainUrl/wp-json/dooplayer/v1/$serverValue",
                                 "$mainUrl/wp-json/dooplayer/v2/$serverValue",
@@ -374,7 +367,6 @@ class EntrepeliculasyseriesProvider : MainAPI() {
                                     val response = app.get(endpoint, headers = mapOf("User-Agent" to userAgent))
                                     val responseText = response.text
                                     
-                                    // Look for embed_url in JSON response
                                     val embedUrlRegex = Regex("\"embed_url\"\\s*:\\s*\"([^\"]+)\"")
                                     val embedMatch = embedUrlRegex.find(responseText)
                                     if (embedMatch != null) {
@@ -383,9 +375,8 @@ class EntrepeliculasyseriesProvider : MainAPI() {
                                         break
                                     }
                                     
-                                    // Look for iframe in HTML response
-                                    val doc = response.document
-                                    val iframe = doc.selectFirst("iframe")
+                                    val responseDoc = response.document
+                                    val iframe = responseDoc.selectFirst("iframe")
                                     if (iframe != null) {
                                         val iframeSrc = iframe.attr("src")
                                         if (iframeSrc.startsWith("http")) {
@@ -399,7 +390,7 @@ class EntrepeliculasyseriesProvider : MainAPI() {
                             }
                         }
                     } catch (e: Exception) {
-                        logError(e)
+                        // Continue processing other servers
                     }
                 })
             }
@@ -415,7 +406,7 @@ class EntrepeliculasyseriesProvider : MainAPI() {
                         val fullUrl = if (iframeUrl.startsWith("http")) iframeUrl else "$mainUrl$iframeUrl"
                         loadExtractor(fullUrl, data, subtitleCallback, callback)
                     } catch (e: Exception) {
-                        logError(e)
+                        // Continue processing other iframes
                     }
                 })
             }
@@ -426,12 +417,9 @@ class EntrepeliculasyseriesProvider : MainAPI() {
                     try {
                         val scriptContent = script.data()
                         if (scriptContent.isNotEmpty()) {
-                            // Look for video hosting patterns
                             val patterns = listOf(
-                                Regex("(?:embed_url|url|src)\\s*[:\\=\"']\\s*([^\"'\\s]+(?:fembed|embedsb|streamtape|doodstream|uqload|mixdrop|upstream|voe|streamwish|filemoon|okru|dailymotion)[^\"'\\s]*)", RegexOption.IGNORE_CASE),
                                 Regex("(?:\"|\')([^\"\']*(?:fembed|embedsb|streamtape|doodstream|uqload|mixdrop|upstream|voe|streamwish|filemoon|okru|dailymotion)[^\"\']*?)(?:\"|\')", RegexOption.IGNORE_CASE),
-                                Regex("file\\s*:\\s*[\"']([^\"']+\\.(?:mp4|m3u8))[\"']"),
-                                Regex("src\\s*:\\s*[\"']([^\"']+)[\"']")
+                                Regex("file\\s*:\\s*[\"']([^\"']+\\.(?:mp4|m3u8))[\"']")
                             )
                             
                             patterns.forEach { pattern ->
@@ -448,7 +436,7 @@ class EntrepeliculasyseriesProvider : MainAPI() {
                             }
                         }
                     } catch (e: Exception) {
-                        logError(e)
+                        // Continue processing other scripts
                     }
                 })
             }
@@ -474,7 +462,7 @@ class EntrepeliculasyseriesProvider : MainAPI() {
                         }
                     }
                 } catch (e: Exception) {
-                    logError(e)
+                    // Continue if page source parsing fails
                 }
             })
             
