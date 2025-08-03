@@ -262,10 +262,23 @@ class CuevanaProvider : MainAPI() {
                         if (optionValue.isNotEmpty()) {
                             // Get the actual video URL from the player endpoint
                             val playerUrl = "$mainUrl/wp-json/dooplayer/v1/$optionValue"
-                            val playerResponse = app.get(playerUrl, headers = mapOf("User-Agent" to userAgent))
-                            val playerData = parseJson<PlayerResponse>(playerResponse.text)
-                            if (playerData.embed_url.isNotEmpty()) {
-                                loadExtractor(playerData.embed_url, data, subtitleCallback, callback)
+                            try {
+                                val playerResponse = app.get(playerUrl, headers = mapOf("User-Agent" to userAgent))
+                                val playerData = parseJson<PlayerResponse>(playerResponse.text)
+                                if (playerData.embed_url.isNotEmpty()) {
+                                    loadExtractor(playerData.embed_url, data, subtitleCallback, callback)
+                                }
+                            } catch (parseException: Exception) {
+                                logError(parseException)
+                                // If JSON parsing fails, try to extract from HTML
+                                val playerDoc = app.get(playerUrl, headers = mapOf("User-Agent" to userAgent)).document
+                                val iframe = playerDoc.selectFirst("iframe")
+                                if (iframe != null) {
+                                    val iframeSrc = iframe.attr("src")
+                                    if (iframeSrc.startsWith("http")) {
+                                        loadExtractor(iframeSrc, data, subtitleCallback, callback)
+                                    }
+                                }
                             }
                         }
                     } catch (e: Exception) {
@@ -283,20 +296,34 @@ class CuevanaProvider : MainAPI() {
                             loadExtractor(optionUrl, data, subtitleCallback, callback)
                         } else if (optionUrl.isNotEmpty()) {
                             // Try to get player data
-                            val playerUrl = "$mainUrl/wp-json/dooplayer/v2/$optionUrl"
-                            try {
-                                val playerResponse = app.get(playerUrl, headers = mapOf("User-Agent" to userAgent))
-                                val playerData = parseJson<PlayerResponse>(playerResponse.text)
-                                if (playerData.embed_url.isNotEmpty()) {
-                                    loadExtractor(playerData.embed_url, data, subtitleCallback, callback)
-                                }
-                            } catch (e: Exception) {
-                                // Try alternative player endpoint
-                                val altPlayerUrl = "$mainUrl/wp-json/dooplayer/v1/$optionUrl"
-                                val altPlayerResponse = app.get(altPlayerUrl, headers = mapOf("User-Agent" to userAgent))
-                                val altPlayerData = parseJson<PlayerResponse>(altPlayerResponse.text)
-                                if (altPlayerData.embed_url.isNotEmpty()) {
-                                    loadExtractor(altPlayerData.embed_url, data, subtitleCallback, callback)
+                            val playerEndpoints = listOf(
+                                "$mainUrl/wp-json/dooplayer/v2/$optionUrl",
+                                "$mainUrl/wp-json/dooplayer/v1/$optionUrl"
+                            )
+                            
+                            for (playerUrl in playerEndpoints) {
+                                try {
+                                    val playerResponse = app.get(playerUrl, headers = mapOf("User-Agent" to userAgent))
+                                    val playerData = parseJson<PlayerResponse>(playerResponse.text)
+                                    if (playerData.embed_url.isNotEmpty()) {
+                                        loadExtractor(playerData.embed_url, data, subtitleCallback, callback)
+                                        break
+                                    }
+                                } catch (parseException: Exception) {
+                                    // If JSON parsing fails, try as HTML
+                                    try {
+                                        val playerDoc = app.get(playerUrl, headers = mapOf("User-Agent" to userAgent)).document
+                                        val iframe = playerDoc.selectFirst("iframe")
+                                        if (iframe != null) {
+                                            val iframeSrc = iframe.attr("src")
+                                            if (iframeSrc.startsWith("http")) {
+                                                loadExtractor(iframeSrc, data, subtitleCallback, callback)
+                                                break
+                                            }
+                                        }
+                                    } catch (htmlException: Exception) {
+                                        continue
+                                    }
                                 }
                             }
                         }
@@ -310,17 +337,34 @@ class CuevanaProvider : MainAPI() {
             doc.select("[data-server], .server-item, .TPlayerNv li").forEach { server ->
                 tasks.add(async {
                     try {
-                        val serverUrl = server.attr("data-server") ?: server.attr("data-tplayernv")
-                        if (serverUrl.isNotEmpty()) {
-                            if (serverUrl.startsWith("http")) {
-                                loadExtractor(serverUrl, data, subtitleCallback, callback)
-                            } else {
-                                // Get server data
-                                val playerUrl = "$mainUrl/wp-json/dooplayer/v1/$serverUrl"
+                        val serverUrl = server.attr("data-server").takeIf { it.isNotEmpty() }
+                            ?: server.attr("data-tplayernv").takeIf { it.isNotEmpty() }
+                            ?: return@async
+                            
+                        if (serverUrl.startsWith("http")) {
+                            loadExtractor(serverUrl, data, subtitleCallback, callback)
+                        } else {
+                            // Get server data
+                            val playerUrl = "$mainUrl/wp-json/dooplayer/v1/$serverUrl"
+                            try {
                                 val playerResponse = app.get(playerUrl, headers = mapOf("User-Agent" to userAgent))
                                 val playerData = parseJson<PlayerResponse>(playerResponse.text)
                                 if (playerData.embed_url.isNotEmpty()) {
                                     loadExtractor(playerData.embed_url, data, subtitleCallback, callback)
+                                }
+                            } catch (parseException: Exception) {
+                                // Try as HTML if JSON fails
+                                try {
+                                    val playerDoc = app.get(playerUrl, headers = mapOf("User-Agent" to userAgent)).document
+                                    val iframe = playerDoc.selectFirst("iframe")
+                                    if (iframe != null) {
+                                        val iframeSrc = iframe.attr("src")
+                                        if (iframeSrc.startsWith("http")) {
+                                            loadExtractor(iframeSrc, data, subtitleCallback, callback)
+                                        }
+                                    }
+                                } catch (htmlException: Exception) {
+                                    // Continue if this fails too
                                 }
                             }
                         }
