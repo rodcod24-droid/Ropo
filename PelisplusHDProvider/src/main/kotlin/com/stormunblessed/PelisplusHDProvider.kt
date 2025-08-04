@@ -53,7 +53,7 @@ class PelisplusHDProvider:MainAPI() {
                 null
             )
         } else {
-            TvSeriesSearchResponse(
+            newTvSeriesSearchResponse(
                 title,
                 href,
                 name,
@@ -76,7 +76,7 @@ class PelisplusHDProvider:MainAPI() {
             val isMovie = href.contains("/pelicula/")
 
             if (isMovie) {
-                MovieSearchResponse(
+                newMovieSearchResponse(
                     title,
                     href,
                     this.name,
@@ -85,7 +85,7 @@ class PelisplusHDProvider:MainAPI() {
                     null
                 )
             } else {
-                TvSeriesSearchResponse(
+                newTvSeriesSearchResponse(
                     title,
                     href,
                     this.name,
@@ -231,3 +231,4 @@ class PelisplusHDProvider:MainAPI() {
         return true
     }
 }
+
