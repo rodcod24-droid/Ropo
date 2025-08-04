@@ -58,44 +58,44 @@
         "url": "https://raw.githubusercontent.com/rodcod24-droid/Ropo/builds/CuevanaProvider.cs3",
         "name": "CuevanaProvider"
     },
-        {
-        "iconUrl": "https://www.google.com/s2/favicons?domain=cuevana.pro&sz=%size%",
+    {
+        "iconUrl": "https://www.google.com/s2/favicons?domain=pelisplus.to&sz=%size%",
         "apiVersion": 1,
-        "repositoryUrl": "https://github.com/rodcod24-droid/Ropo",
-        "fileSize": 24298,
+        "repositoryUrl": "https://github.com/Stormunblessed/storm-ext",
+        "fileSize": 14967,
         "status": 1,
         "language": "es",
         "authors": [
-            "Phisher98"
+            "Stormunblessed"
         ],
         "tvTypes": [
-            "Anime",
+            "Movie",
             "TvSeries",
-            "Movie"
+            "AsianDrama",
+            "Anime"
         ],
-        "version": 8,
-        "internalName": "PelisplusHDProvider",
-        "url": "https://raw.githubusercontent.com/rodcod24-droid/Ropo/builds/PelisplusHDProvider.cs3",
-        "name": "PelisplusProvider"
-    },
-            {
-        "iconUrl": "https://www.google.com/s2/favicons?domain=cuevana.pro&sz=%size%",
-        "apiVersion": 1,
-        "repositoryUrl": "https://github.com/rodcod24-droid/Ropo",
-        "fileSize": 24298,
-        "status": 1,
-        "language": "es",
-        "authors": [
-            "Phisher98"
-        ],
-        "tvTypes": [
-            "Anime",
-            "TvSeries",
-            "Movie"
-        ],
-        "version": 8,
-        "internalName": "PelisplusHDProvider",
-        "url": "https://raw.githubusercontent.com/rodcod24-droid/Ropo/builds/Pelisplus4KProvider.cs3",
+        "version": 6,
+        "internalName": "Pelisplus4KProvider",
+        "url": "https://raw.githubusercontent.com/Stormunblessed/storm-ext/builds/Pelisplus4KProvider.cs3",
         "name": "Pelisplus4KProvider"
-    }
+    },
+    {
+        "iconUrl": "https://www.google.com/s2/favicons?domain=pelisplushd.nu&sz=%size%",
+        "apiVersion": 1,
+        "repositoryUrl": "https://github.com/Stormunblessed/storm-ext",
+        "fileSize": 13780,
+        "status": 1,
+        "language": "es",
+        "authors": [
+            "Stormunblessed"
+        ],
+        "tvTypes": [
+            "TvSeries",
+            "Movie"
+        ],
+        "version": 5,
+        "internalName": "PelisplusHDProvider",
+        "url": "https://raw.githubusercontent.com/Stormunblessed/storm-ext/builds/PelisplusHDProvider.cs3",
+        "name": "PelisplusHDProvider"
+    },
 ]
