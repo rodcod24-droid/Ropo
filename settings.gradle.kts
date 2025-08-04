@@ -5,6 +5,7 @@ rootProject.name = "CloudstreamPlugins"
 
 // Plugins are included like this
 val disabled = listOf<String>(
+"CuevanaProvider",
 )
 
 File(rootDir, ".").eachDir { dir ->
