@@ -57,5 +57,45 @@
         "internalName": "CuevanaProvider",
         "url": "https://raw.githubusercontent.com/rodcod24-droid/Ropo/builds/CuevanaProvider.cs3",
         "name": "CuevanaProvider"
+    },
+        {
+        "iconUrl": "https://www.google.com/s2/favicons?domain=cuevana.pro&sz=%size%",
+        "apiVersion": 1,
+        "repositoryUrl": "https://github.com/rodcod24-droid/Ropo",
+        "fileSize": 24298,
+        "status": 1,
+        "language": "es",
+        "authors": [
+            "Phisher98"
+        ],
+        "tvTypes": [
+            "Anime",
+            "TvSeries",
+            "Movie"
+        ],
+        "version": 8,
+        "internalName": "PelisplusHDProvider",
+        "url": "https://raw.githubusercontent.com/rodcod24-droid/Ropo/builds/PelisplusHDProvider.cs3",
+        "name": "PelisplusProvider"
+    },
+            {
+        "iconUrl": "https://www.google.com/s2/favicons?domain=cuevana.pro&sz=%size%",
+        "apiVersion": 1,
+        "repositoryUrl": "https://github.com/rodcod24-droid/Ropo",
+        "fileSize": 24298,
+        "status": 1,
+        "language": "es",
+        "authors": [
+            "Phisher98"
+        ],
+        "tvTypes": [
+            "Anime",
+            "TvSeries",
+            "Movie"
+        ],
+        "version": 8,
+        "internalName": "PelisplusHDProvider",
+        "url": "https://raw.githubusercontent.com/rodcod24-droid/Ropo/builds/Pelisplus4KProvider.cs3",
+        "name": "Pelisplus4KProvider"
     }
 ]
