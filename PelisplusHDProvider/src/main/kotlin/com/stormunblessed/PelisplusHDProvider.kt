@@ -47,18 +47,18 @@ class PelisplusHDProvider : MainAPI() {
             newMovieSearchResponse(
                 title,
                 href,
-                this@PelisplusHDProvider.name,
-                TvType.Movie,
-                posterUrl,
-            )
+                TvType.Movie
+            ) {
+                this.posterUrl = posterUrl
+            }
         } else {
             newTvSeriesSearchResponse(
                 title,
                 href,
-                this@PelisplusHDProvider.name,
-                TvType.TvSeries,
-                posterUrl,
-            )
+                TvType.TvSeries
+            ) {
+                this.posterUrl = posterUrl
+            }
         }
     }
 
@@ -67,7 +67,28 @@ class PelisplusHDProvider : MainAPI() {
         val document = app.get(url).document
 
         return document.select("a.Posters-link").mapNotNull { element ->
-            element.toSearchResult()
+            val title = element.selectFirst(".listing-content p")?.text() ?: return@mapNotNull null
+            val href = element.selectFirst("a")?.attr("href") ?: return@mapNotNull null
+            val posterUrl = element.selectFirst(".Posters-img")?.attr("src")?.let { fixUrl(it) }
+            val isMovie = href.contains("/pelicula/")
+
+            if (isMovie) {
+                newMovieSearchResponse(
+                    title,
+                    href,
+                    TvType.Movie
+                ) {
+                    this.posterUrl = posterUrl
+                }
+            } else {
+                newTvSeriesSearchResponse(
+                    title,
+                    href,
+                    TvType.TvSeries
+                ) {
+                    this.posterUrl = posterUrl
+                }
+            }
         }
     }
 
@@ -90,7 +111,11 @@ class PelisplusHDProvider : MainAPI() {
             val episode = if (isValid) seasonId.getOrNull(1) else null
             val season = if (isValid) seasonId.getOrNull(0) else null
             
-            Episode(href, name, season, episode)
+            newEpisode(href) {
+                this.name = name
+                this.season = season
+                this.episode = episode
+            }
         }
 
         val year = doc.selectFirst(".p-r-15 .text-semibold")?.text()?.toIntOrNull()
