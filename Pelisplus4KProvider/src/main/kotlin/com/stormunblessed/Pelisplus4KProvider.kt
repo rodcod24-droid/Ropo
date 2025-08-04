@@ -1,9 +1,11 @@
-package com.stormunblessed
+package com.lagradost
 
 import com.lagradost.cloudstream3.*
-import com.lagradost.cloudstream3.utils.AppUtils.parseJson
 import com.lagradost.cloudstream3.utils.ExtractorLink
 import com.lagradost.cloudstream3.utils.loadExtractor
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.coroutineScope
 
 class Pelisplus4KProvider :MainAPI() {
     override var mainUrl = "https://ww3.pelisplus.to"
