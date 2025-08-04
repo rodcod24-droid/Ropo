@@ -76,7 +76,7 @@
         ],
         "version": 6,
         "internalName": "Pelisplus4KProvider",
-        "url": "https://raw.githubusercontent.com/Stormunblessed/storm-ext/builds/Pelisplus4KProvider.cs3",
+        "url": "https://raw.githubusercontent.com/rodcod24-droid/Ropo/builds/Pelisplus4KProvider.cs3",
         "name": "Pelisplus4KProvider"
     },
     {
@@ -95,7 +95,7 @@
         ],
         "version": 5,
         "internalName": "PelisplusHDProvider",
-        "url": "https://raw.githubusercontent.com/Stormunblessed/storm-ext/builds/PelisplusHDProvider.cs3",
+        "url": "https://raw.githubusercontent.com/rodcod24-droid/Ropo/builds/PelisplusHDProvider.cs3",
         "name": "PelisplusHDProvider"
     },
 ]
