@@ -41,10 +41,10 @@ class Pelisplus4KProvider : MainAPI() {
                     newTvSeriesSearchResponse(
                         title,
                         link,
-                        this.name,
                         TvType.TvSeries,
-                        img,
-                    )
+                    ) {
+                        this.posterUrl = img
+                    }
                 } else null
             }
             items.add(HomePageList(name, home))
@@ -64,10 +64,10 @@ class Pelisplus4KProvider : MainAPI() {
                 newTvSeriesSearchResponse(
                     title,
                     link,
-                    this.name,
                     TvType.TvSeries,
-                    img,
-                )
+                ) {
+                    this.posterUrl = img
+                }
             } else null
         }
     }
@@ -109,13 +109,12 @@ class Pelisplus4KProvider : MainAPI() {
                             val epUrl = "$url/season/$seasonNum/episode/$epNum"
                             
                             episodes.add(
-                                Episode(
-                                    epUrl,
-                                    epTitle,
-                                    seasonNum,
-                                    epNum,
-                                    realImg,
-                                )
+                                newEpisode(epUrl) {
+                                    this.name = epTitle
+                                    this.season = seasonNum
+                                    this.episode = epNum
+                                    this.posterUrl = realImg
+                                }
                             )
                         }
                     }
