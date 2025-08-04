@@ -1,11 +1,7 @@
 package com.stormunblessed
 
 import com.lagradost.cloudstream3.*
-import com.lagradost.cloudstream3.utils.ExtractorLink
-import com.lagradost.cloudstream3.utils.loadExtractor
-import kotlinx.coroutines.async
-import kotlinx.coroutines.awaitAll
-import kotlinx.coroutines.coroutineScope
+import com.lagradost.cloudstream3.utils.*
 
 class Pelisplus4KProvider : MainAPI() {
     override var mainUrl = "https://ww3.pelisplus.to"
@@ -72,11 +68,11 @@ class Pelisplus4KProvider : MainAPI() {
         }
     }
 
-    private data class MainTemporadaElement(
+    data class MainTemporadaElement(
         val title: String? = null,
         val image: String? = null,
         val season: Int? = null,
-        val episode: Int? = null, // Fixed: was 'newepisode'
+        val episode: Int? = null,
         val newepisode: Int? = null
     )
 
