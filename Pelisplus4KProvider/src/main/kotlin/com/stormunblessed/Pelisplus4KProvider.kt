@@ -34,7 +34,7 @@ class Pelisplus4KProvider :MainAPI() {
                 val title = it.selectFirst("a h2")?.text()
                 val link = it.selectFirst("a.itemA")?.attr("href")
                 val img = it.selectFirst("picture img")?.attr("data-src")
-                TvSeriesSearchResponse(
+                newTvSeriesSearchResponse(
                     title!!,
                     link!!,
                     this.name,
@@ -54,7 +54,7 @@ class Pelisplus4KProvider :MainAPI() {
             val title = it.selectFirst("a h2")?.text()
             val link = it.selectFirst("a.itemA")?.attr("href")
             val img = it.selectFirst("picture img")?.attr("data-src")
-            TvSeriesSearchResponse(
+            newTvSeriesSearchResponse(
                 title!!,
                 link!!,
                 this.name,
@@ -69,7 +69,7 @@ class Pelisplus4KProvider :MainAPI() {
         val title: String? = null,
         val image: String? = null,
         val season: Int? = null,
-        val episode: Int? = null
+        val newepisode: Int? = null
     )
     override suspend fun load(url: String): LoadResponse? {
         val doc = app.get(url).document
