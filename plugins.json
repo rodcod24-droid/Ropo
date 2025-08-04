@@ -1,0 +1,82 @@
+[
+    {
+        "iconUrl": "https://www.google.com/s2/favicons?domain=www3.animeflv.net&sz=%size%",
+        "apiVersion": 1,
+        "repositoryUrl": "https://github.com/rodcod24-droid/Ropo",
+        "fileSize": 18127,
+        "status": 1,
+        "language": "es",
+        "authors": [
+            "Phisher98"
+        ],
+        "tvTypes": [
+            "AnimeMovie",
+            "Anime",
+            "OVA"
+        ],
+        "version": 1,
+        "internalName": "AnimeflvnetProvider",
+        "url": "https://raw.githubusercontent.com/rodcod24-droid/Ropo/builds/AnimeflvnetProvider.cs3",
+        "name": "AnimeflvnetProvider"
+    },
+    {
+        "iconUrl": "https://www.google.com/s2/favicons?domain=cinecalidad.lol&sz=%size%",
+        "apiVersion": 1,
+        "repositoryUrl": "https://github.com/rodcod24-droid/Ropo",
+        "fileSize": 19117,
+        "status": 1,
+        "language": "es",
+        "authors": [
+            "Phisher98"
+        ],
+        "tvTypes": [
+            "TvSeries",
+            "Movie"
+        ],
+        "version": 1,
+        "internalName": "CinecalidadProvider",
+        "url": "https://raw.githubusercontent.com/rodcod24-droid/Ropo/builds/CinecalidadProvider.cs3",
+        "name": "CinecalidadProvider"
+    },
+    {
+        "iconUrl": "https://www.google.com/s2/favicons?domain=cuevana.pro&sz=%size%",
+        "apiVersion": 1,
+        "repositoryUrl": "https://github.com/rodcod24-droid/Ropo",
+        "fileSize": 17673,
+        "status": 1,
+        "language": "es",
+        "authors": [
+            "Phisher98"
+        ],
+        "tvTypes": [
+            "Anime",
+            "TvSeries",
+            "Movie"
+        ],
+        "version": 8,
+        "internalName": "CuevanaProvider",
+        "url": "https://raw.githubusercontent.com/rodcod24-droid/Ropo/builds/CuevanaProvider.cs3",
+        "name": "CuevanaProvider"
+    },
+    {
+        "iconUrl": "https://www.google.com/s2/favicons?domain=pelisplus.to&sz=%size%",
+        "apiVersion": 1,
+        "repositoryUrl": "https://github.com/rodcod24-droid/Ropo",
+        "fileSize": 13999,
+        "status": 1,
+        "language": "es",
+        "authors": [
+            "Stormunblessed"
+        ],
+        "tvTypes": [
+            "Movie",
+            "TvSeries",
+            "AsianDrama",
+            "Anime"
+        ],
+        "version": 6,
+        "internalName": "Pelisplus4KProvider",
+        "url": "https://raw.githubusercontent.com/rodcod24-droid/Ropo/builds/Pelisplus4KProvider.cs3",
+        "name": "Pelisplus4KProvider"
+    }
+]
