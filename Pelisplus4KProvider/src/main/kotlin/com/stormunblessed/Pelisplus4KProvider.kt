@@ -1,4 +1,4 @@
-package com.lagradost
+package com.stormunblessed
 
 import com.lagradost.cloudstream3.*
 import com.lagradost.cloudstream3.utils.ExtractorLink
@@ -7,7 +7,7 @@ import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
 
-class Pelisplus4KProvider :MainAPI() {
+class Pelisplus4KProvider : MainAPI() {
     override var mainUrl = "https://ww3.pelisplus.to"
     override var name = "Pelisplus4K"
     override var lang = "es"
@@ -21,7 +21,7 @@ class Pelisplus4KProvider :MainAPI() {
         TvType.Anime,
     )
 
-    override suspend fun getMainPage(page: Int, request: MainPageRequest): HomePageResponse? {
+    override suspend fun getMainPage(page: Int, request: MainPageRequest): HomePageResponse {
         val items = ArrayList<HomePageList>()
         val urls = listOf(
             Pair("Peliculas", "$mainUrl/peliculas"),
@@ -32,17 +32,20 @@ class Pelisplus4KProvider :MainAPI() {
 
         urls.apmap { (name, url) ->
             val doc = app.get(url).document
-            val home = doc.select(".articlesList article").map {
+            val home = doc.select(".articlesList article").mapNotNull {
                 val title = it.selectFirst("a h2")?.text()
                 val link = it.selectFirst("a.itemA")?.attr("href")
                 val img = it.selectFirst("picture img")?.attr("data-src")
-                newTvSeriesSearchResponse(
-                    title!!,
-                    link!!,
-                    this.name,
-                    TvType.TvSeries,
-                    img,
-                )
+                
+                if (title != null && link != null) {
+                    newTvSeriesSearchResponse(
+                        title,
+                        link,
+                        this.name,
+                        TvType.TvSeries,
+                        img,
+                    )
+                } else null
             }
             items.add(HomePageList(name, home))
         }
@@ -52,67 +55,79 @@ class Pelisplus4KProvider :MainAPI() {
     override suspend fun search(query: String): List<SearchResponse> {
         val url = "$mainUrl/api/search/$query"
         val doc = app.get(url).document
-        return doc.select("article.item").map {
+        return doc.select("article.item").mapNotNull {
             val title = it.selectFirst("a h2")?.text()
             val link = it.selectFirst("a.itemA")?.attr("href")
             val img = it.selectFirst("picture img")?.attr("data-src")
-            newTvSeriesSearchResponse(
-                title!!,
-                link!!,
-                this.name,
-                TvType.TvSeries,
-                img,
-            )
+            
+            if (title != null && link != null) {
+                newTvSeriesSearchResponse(
+                    title,
+                    link,
+                    this.name,
+                    TvType.TvSeries,
+                    img,
+                )
+            } else null
         }
     }
 
-    class MainTemporada(elements: Map<String, List<MainTemporadaElement>>) : HashMap<String, List<MainTemporadaElement>>(elements)
-    data class MainTemporadaElement (
+    private data class MainTemporadaElement(
         val title: String? = null,
         val image: String? = null,
         val season: Int? = null,
+        val episode: Int? = null, // Fixed: was 'newepisode'
         val newepisode: Int? = null
     )
+
     override suspend fun load(url: String): LoadResponse? {
         val doc = app.get(url).document
         val tvType = if (url.contains("pelicula")) TvType.Movie else TvType.TvSeries
-        val title = doc.selectFirst(".slugh1")?.text() ?: ""
-        val backimage = doc.selectFirst("head meta[property=og:image]")!!.attr("content")
+        val title = doc.selectFirst(".slugh1")?.text() ?: return null
+        val backimage = doc.selectFirst("head meta[property=og:image]")?.attr("content") ?: ""
         val poster = backimage.replace("original", "w500")
-        val description = doc.selectFirst("div.description")!!.text()
+        val description = doc.selectFirst("div.description")?.text() ?: ""
         val tags = doc.select("div.home__slider .genres:contains(Generos) a").map { it.text() }
-        val epi = ArrayList<Episode>()
+        val episodes = ArrayList<Episode>()
+
         if (tvType == TvType.TvSeries) {
             val script = doc.select("script").firstOrNull { it.html().contains("seasonsJson = ") }?.html()
-            if(!script.isNullOrEmpty()){
-                val jsonscript = script.substringAfter("seasonsJson = ").substringBefore(";")
-                val json = parseJson<MainTemporada>(jsonscript)
-                json.values.map { list ->
-                    list.map { info ->
-                        val epTitle = info.title
-                        val seasonNum = info.season
-                        val epNum = info.episode
-                        val img = info.image
-                        val realimg = if (img == null) null else if (img.isEmpty() == true) null else "https://image.tmdb.org/t/p/w342${img.replace("\\/", "/")}"
-                        val epurl = "$url/season/$seasonNum/episode/$epNum"
-                        epi.add(
-                            Episode(
-                                epurl,
-                                epTitle,
-                                seasonNum,
-                                epNum,
-                                realimg,
-                            ))
+            if (!script.isNullOrEmpty()) {
+                try {
+                    val jsonScript = script.substringAfter("seasonsJson = ").substringBefore(";")
+                    val json = parseJson<Map<String, List<MainTemporadaElement>>>(jsonScript)
+                    
+                    json.values.forEach { list ->
+                        list.forEach { info ->
+                            val epTitle = info.title
+                            val seasonNum = info.season
+                            val epNum = info.episode ?: info.newepisode
+                            val img = info.image
+                            val realImg = if (!img.isNullOrEmpty()) {
+                                "https://image.tmdb.org/t/p/w342${img.replace("\\/", "/")}"
+                            } else null
+                            val epUrl = "$url/season/$seasonNum/episode/$epNum"
+                            
+                            episodes.add(
+                                Episode(
+                                    epUrl,
+                                    epTitle,
+                                    seasonNum,
+                                    epNum,
+                                    realImg,
+                                )
+                            )
+                        }
                     }
+                } catch (e: Exception) {
+                    // Handle parsing error gracefully
                 }
             }
         }
 
-        return when(tvType)
-        {
+        return when (tvType) {
             TvType.TvSeries -> {
-                newTvSeriesLoadResponse(title,
-                    url, tvType, epi,){
+                newTvSeriesLoadResponse(title, url, tvType, episodes) {
                     this.posterUrl = poster
                     this.backgroundPosterUrl = backimage
                     this.plot = description
@@ -120,7 +135,7 @@ class Pelisplus4KProvider :MainAPI() {
                 }
             }
             TvType.Movie -> {
-                newMovieLoadResponse(title, url, tvType, url){
+                newMovieLoadResponse(title, url, tvType, url) {
                     this.posterUrl = poster
                     this.backgroundPosterUrl = backimage
                     this.plot = description
@@ -139,16 +154,20 @@ class Pelisplus4KProvider :MainAPI() {
     ): Boolean {
         val doc = app.get(data).document
         doc.select("div ul.subselect li").apmap {
-            val encodedOne = it.attr("data-server").toByteArray()
-            val encodedTwo = base64Encode(encodedOne)
-            val linkRegex = Regex("window\\.location\\.href\\s*=\\s*'(.*)'")
-            val text = app.get("$mainUrl/player/$encodedTwo").text
-            val link = linkRegex.find(text)?.destructured?.component1()
-            if (link != null) {
-                loadExtractor(link, mainUrl, subtitleCallback, callback)
+            try {
+                val encodedOne = it.attr("data-server").toByteArray()
+                val encodedTwo = base64Encode(encodedOne)
+                val linkRegex = Regex("window\\.location\\.href\\s*=\\s*'(.*?)'")
+                val text = app.get("$mainUrl/player/$encodedTwo").text
+                val link = linkRegex.find(text)?.destructured?.component1()
+                
+                if (!link.isNullOrBlank()) {
+                    loadExtractor(link, mainUrl, subtitleCallback, callback)
+                }
+            } catch (e: Exception) {
+                // Handle errors gracefully
             }
         }
         return true
     }
-
 }
