@@ -68,14 +68,6 @@ class Pelisplus4KProvider : MainAPI() {
         }
     }
 
-    data class MainTemporadaElement(
-        val title: String? = null,
-        val image: String? = null,
-        val season: Int? = null,
-        val episode: Int? = null,
-        val newepisode: Int? = null
-    )
-
     override suspend fun load(url: String): LoadResponse? {
         val doc = app.get(url).document
         val tvType = if (url.contains("pelicula")) TvType.Movie else TvType.TvSeries
@@ -91,14 +83,29 @@ class Pelisplus4KProvider : MainAPI() {
             if (!script.isNullOrEmpty()) {
                 try {
                     val jsonScript = script.substringAfter("seasonsJson = ").substringBefore(";")
-                    val json = parseJson<Map<String, List<MainTemporadaElement>>>(jsonScript)
                     
-                    json.values.forEach { list ->
-                        list.forEach { info ->
-                            val epTitle = info.title
-                            val seasonNum = info.season
-                            val epNum = info.episode ?: info.newepisode
-                            val img = info.image
+                    // Extract episodes using regex patterns instead of parseJson
+                    val titleRegex = """"title":"([^"]*?)"""".toRegex()
+                    val seasonRegex = """"season":(\d+)""".toRegex()
+                    val episodeRegex = """"episode":(\d+)""".toRegex() 
+                    val newepisodeRegex = """"newepisode":(\d+)""".toRegex()
+                    val imageRegex = """"image":"([^"]*?)"""".toRegex()
+                    
+                    val titles = titleRegex.findAll(jsonScript).map { it.groupValues[1] }.toList()
+                    val seasons = seasonRegex.findAll(jsonScript).map { it.groupValues[1].toInt() }.toList()
+                    val episodeNumbers = episodeRegex.findAll(jsonScript).map { it.groupValues[1].toInt() }.toList()
+                    val newEpisodeNumbers = newepisodeRegex.findAll(jsonScript).map { it.groupValues[1].toInt() }.toList()
+                    val images = imageRegex.findAll(jsonScript).map { it.groupValues[1] }.toList()
+                    
+                    val maxSize = maxOf(titles.size, seasons.size, episodeNumbers.size, newEpisodeNumbers.size, images.size)
+                    
+                    for (i in 0 until maxSize) {
+                        val epTitle = titles.getOrNull(i)
+                        val seasonNum = seasons.getOrNull(i)
+                        val epNum = episodeNumbers.getOrNull(i) ?: newEpisodeNumbers.getOrNull(i)
+                        val img = images.getOrNull(i)
+                        
+                        if (seasonNum != null && epNum != null) {
                             val realImg = if (!img.isNullOrEmpty()) {
                                 "https://image.tmdb.org/t/p/w342${img.replace("\\/", "/")}"
                             } else null
